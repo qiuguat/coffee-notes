@@ -8,6 +8,8 @@
 <!-- Vue 3 and SheetJS (Excel) from CDN. No build tools needed. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Supabase (cloud database + login). If this fails to load, the app falls back to Excel-only mode. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
   /* ============ THEME — edit colors here ============ */
@@ -197,8 +199,10 @@
 
   <header class="head">
     <div>
-      <h1>Trade Log</h1>
-      <p class="sub">Bursa Malaysia + US equities</p>
+      <h1>This is my AMAZING Trade Log</h1>
+      <p class="sub">MY + US equities
+        <template v-if="user"> · <b>{{ user.email }}</b> · <span :class="sync === 'Sync failed' ? 'c-loss' : ''">{{ sync }}</span> · <a href="#" @click.prevent="signOut" style="color:var(--blue)">Sign out</a></template>
+      </p>
     </div>
     <div class="head-acts">
       <button class="btn" @click="$refs.file.click()">Import Excel</button>
@@ -209,7 +213,8 @@
   </header>
 
   <div v-if="saveError" class="warn">Something went wrong saving or importing. Your last change may not persist — try again.</div>
-  <div v-if="!hasStorage" class="info">Opened outside Claude: data is kept in this browser tab only. Use <b>Export Excel</b> before closing, and <b>Import Excel</b> next time.</div>
+  <div v-if="!cloud && !hasStorage" class="info">Cloud database not reachable and no local storage: data lives in this browser tab only. Use <b>Export Excel</b> before closing, and <b>Import Excel</b> next time.</div>
+  <div v-if="cloud && cloudSkip && !user" class="info">Working offline — changes are NOT saved to the cloud. <a href="#" @click.prevent="cloudSkip = false" style="color:var(--blue)">Sign in</a> to sync.</div>
 
   <nav class="tabs">
     <button :class="{ on: marketTab === 'MY' }" @click="marketTab = 'MY'">Malaysia (MYR)</button>
@@ -484,6 +489,24 @@
     </div>
   </div>
 
+  <!-- sign in (cloud database) -->
+  <div v-if="cloud && !user && !cloudSkip" class="overlay">
+    <div class="modal narrow">
+      <h2>Sign in</h2>
+      <p style="margin-top:0">Your trades are stored in your own private cloud database. Sign in to load and sync them on any device.</p>
+      <label>Email<input type="email" v-model="authEmail" autocomplete="username" /></label>
+      <label class="wide">Password<input type="password" v-model="authPass" autocomplete="current-password" @keydown.enter="signIn" /></label>
+      <p v-if="authError" class="hintline" style="color:#b45309">⚠ {{ authError }}</p>
+      <div class="modal-acts split">
+        <button class="btn" :disabled="authBusy" @click="signUp">Create account</button>
+        <button class="primary" :disabled="authBusy" @click="signIn">{{ authBusy ? 'Please wait…' : 'Sign in' }}</button>
+      </div>
+      <p class="hintline" style="text-align:center;margin-top:10px">
+        <a href="#" @click.prevent="cloudSkip = true" style="color:var(--dim)">Skip — work offline with Excel only</a>
+      </p>
+    </div>
+  </div>
+
   <!-- import / export progress -->
   <div v-if="busy" class="busy-overlay">
     <div class="spinner"></div>
@@ -494,6 +517,12 @@
 
 <script>
 const { createApp } = Vue;
+
+// ============ CLOUD DATABASE (Supabase) — your project ============
+const SUPABASE_URL = "https://rrwyehoprmglkwlhlnqj.supabase.co";
+const SUPABASE_KEY = "sb_publishable_24kWt2sSn-vJ5UspAgfqug_Uz6mOkgY"; // publishable key — safe to be public; RLS protects the data
+let sb = null; // supabase client (kept outside Vue)
+const INDUSTRIES_ROW_ID = "__industries"; // special row that syncs your industry list
 
 const blankFill = () => ({ units: "", price: "", fee: "", at: "" });
 
@@ -514,6 +543,11 @@ createApp({
       positions: [],
       industries: DEFAULT_INDUSTRIES.slice(),
       hasStorage: typeof window.storage !== "undefined",
+      cloud: false,       // supabase library loaded and client created
+      cloudSkip: false,   // user chose to work offline
+      user: null,         // signed-in supabase user
+      sync: "",           // sync status text shown in the header
+      authEmail: "", authPass: "", authError: "", authBusy: false,
       saveError: false,
       busy: null,
       showForm: false, showInd: false,
@@ -605,6 +639,25 @@ createApp({
         const r = await window.storage.get("industries-v1");
         if (r && r.value) this.industries = JSON.parse(r.value);
       } catch (e) { /* first run */ }
+    }
+
+    // ----- cloud database -----
+    if (window.supabase) {
+      try {
+        // some environments block localStorage — give supabase an in-memory fallback so it never crashes
+        let authStorage;
+        try { localStorage.setItem("__t", "1"); localStorage.removeItem("__t"); }
+        catch (e) {
+          const mem = {};
+          authStorage = { getItem: (k) => mem[k] ?? null, setItem: (k, v) => { mem[k] = v; }, removeItem: (k) => { delete mem[k]; } };
+        }
+        sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, authStorage ? { auth: { storage: authStorage } } : {});
+        this.cloud = true;
+        const { data } = await sb.auth.getSession();
+        this.user = data && data.session ? data.session.user : null;
+        sb.auth.onAuthStateChange((_e, session) => { this.user = session ? session.user : null; });
+        if (this.user) await this.loadCloud();
+      } catch (e) { this.cloud = false; }
     }
   },
 
@@ -795,6 +848,100 @@ createApp({
       return s;
     },
 
+    // ---------- cloud: auth ----------
+    async signIn() {
+      if (!sb) return;
+      this.authBusy = true; this.authError = "";
+      const { error } = await sb.auth.signInWithPassword({ email: this.authEmail.trim(), password: this.authPass });
+      this.authBusy = false;
+      if (error) { this.authError = error.message; return; }
+      this.authPass = "";
+      await this.loadCloud();
+    },
+    async signUp() {
+      if (!sb) return;
+      this.authBusy = true; this.authError = "";
+      const { data, error } = await sb.auth.signUp({ email: this.authEmail.trim(), password: this.authPass });
+      this.authBusy = false;
+      if (error) { this.authError = error.message; return; }
+      if (data && data.session) { this.authPass = ""; await this.loadCloud(); }
+      else this.authError = "Account created — check your email to confirm, then sign in.";
+    },
+    async signOut() {
+      if (sb) await sb.auth.signOut();
+      this.user = null;
+      this.positions = [];   // keep your data private on shared computers
+      this.sync = "";
+      this.cloudSkip = false;
+    },
+
+    // ---------- cloud: data ----------
+    async loadCloud() {
+      if (!sb || !this.user) return;
+      this.busy = "Loading from cloud…";
+      try {
+        const { data, error } = await sb.from("positions").select("id,data");
+        if (error) throw error;
+        const rows = data || [];
+        const indRow = rows.find((r) => r.id === INDUSTRIES_ROW_ID);
+        if (indRow && indRow.data && Array.isArray(indRow.data.list)) this.industries = indRow.data.list;
+        const cloudPositions = rows.filter((r) => r.id !== INDUSTRIES_ROW_ID).map((r) => ({ ...r.data, id: r.id }));
+        if (cloudPositions.length === 0 && this.positions.length > 0) {
+          // first sign-in with existing local data: push it up automatically
+          await this.replaceCloud(this.positions);
+        } else {
+          this.positions = cloudPositions;
+          this.persist(); // keep the Claude-storage copy in step when available
+        }
+        this.setSynced();
+      } catch (e) { this.sync = "Sync failed"; this.saveError = true; }
+      this.busy = null;
+    },
+    setSynced() {
+      const d = new Date();
+      const p = (n) => String(n).padStart(2, "0");
+      this.sync = "Synced " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+      this.saveError = false;
+    },
+    async saveCloud(p) {
+      if (!sb || !this.user) return;
+      this.sync = "Saving…";
+      try {
+        const { error } = await sb.from("positions").upsert({ id: p.id, data: p, updated_at: new Date().toISOString() });
+        if (error) throw error;
+        this.setSynced();
+      } catch (e) { this.sync = "Sync failed"; this.saveError = true; }
+    },
+    async deleteCloud(id) {
+      if (!sb || !this.user) return;
+      this.sync = "Saving…";
+      try {
+        const { error } = await sb.from("positions").delete().eq("id", id);
+        if (error) throw error;
+        this.setSynced();
+      } catch (e) { this.sync = "Sync failed"; this.saveError = true; }
+    },
+    async replaceCloud(list) {
+      if (!sb || !this.user) return;
+      this.sync = "Saving…";
+      try {
+        const del = await sb.from("positions").delete().neq("id", INDUSTRIES_ROW_ID);
+        if (del.error) throw del.error;
+        if (list.length) {
+          const rows = list.map((p) => ({ id: p.id, data: p, updated_at: new Date().toISOString() }));
+          const ins = await sb.from("positions").upsert(rows);
+          if (ins.error) throw ins.error;
+        }
+        this.setSynced();
+      } catch (e) { this.sync = "Sync failed"; this.saveError = true; }
+    },
+    async saveIndustriesCloud() {
+      if (!sb || !this.user) return;
+      try {
+        await sb.from("positions").upsert({ id: INDUSTRIES_ROW_ID, data: { list: this.industries }, updated_at: new Date().toISOString() });
+      } catch (e) { /* non-critical */ }
+    },
+
     // ---------- saving ----------
     async persist() {
       if (!this.hasStorage) return;
@@ -836,13 +983,16 @@ createApp({
       const at = c.firstBuyAt ? new Date(c.firstBuyAt) : null;
       if (at && !isNaN(at)) this.openMonths[at.getFullYear() + "-" + String(at.getMonth() + 1).padStart(2, "0")] = true;
       this.persist();
+      this.saveCloud(clean);
     },
     askDelete(p) { this.confirmDel = p; },
     doDelete() {
       if (!this.confirmDel) return;
-      this.positions = this.positions.filter((p) => p.id !== this.confirmDel.id);
+      const id = this.confirmDel.id;
+      this.positions = this.positions.filter((p) => p.id !== id);
       this.confirmDel = null;
       this.persist();
+      this.deleteCloud(id);
     },
 
     // ---------- industries ----------
@@ -852,10 +1002,12 @@ createApp({
       this.industries.push(v);
       this.newInd = "";
       this.persistInd();
+      this.saveIndustriesCloud();
     },
     removeIndustry(v) {
       this.industries = this.industries.filter((i) => i !== v);
       this.persistInd();
+      this.saveIndustriesCloud();
     },
 
     // ---------- Excel export / import ----------
@@ -963,8 +1115,9 @@ createApp({
         if (imported.length) {
           this.positions = imported; // import replaces the current log
           const fresh = [...new Set(imported.map((p) => p.industry).filter((v) => v && !this.industries.includes(v)))];
-          if (fresh.length) { this.industries = this.industries.concat(fresh); this.persistInd(); }
+          if (fresh.length) { this.industries = this.industries.concat(fresh); this.persistInd(); this.saveIndustriesCloud(); }
           await this.persist();
+          await this.replaceCloud(imported);
         }
       } catch (err) { this.saveError = true; }
       e.target.value = "";
