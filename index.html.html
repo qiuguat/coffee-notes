@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Trade Log — MY + US</title>
+
+<!-- Vue 3 and SheetJS (Excel) from CDN. No build tools needed. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+  /* ============ THEME — edit colors here ============ */
+  :root{
+    --bg:#f4f6f9; --surface:#ffffff; --surface2:#fbfcfe;
+    --border:#dfe4ec; --border2:#cfd6e1;
+    --text:#1f2733; --dim:#6b7686; --blue:#2f6fed;
+    --win:#15803d; --loss:#b45309;
+    --win-row:#e3f5e9; --loss-row:#fdf3d7;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;overflow:hidden}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif}
+  /* full-height app: header stays fixed, table fills the rest and scrolls internally */
+  #app{height:100%;display:flex;flex-direction:column;padding:20px}
+  #app > .head, #app > .warn, #app > .info, #app > .empty{flex:0 0 auto}
+
+  .head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+  .head h1{margin:0;font-size:26px;font-weight:650;letter-spacing:-.02em}
+  .sub{margin:2px 0 0;color:var(--dim);font-size:13px}
+  .head-acts{display:flex;gap:8px;flex-wrap:wrap}
+  button{cursor:pointer;font-family:inherit}
+  .btn{background:var(--surface);border:1px solid var(--border2);color:#3d4756;border-radius:8px;padding:9px 14px;font-size:13px}
+  .btn:hover{border-color:var(--blue);color:var(--blue)}
+  .primary{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600}
+  .primary:hover{background:#3d7bf0}
+  .danger{background:#dc2626;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:600}
+  .danger:hover{background:#e63b3b}
+  .warn{background:#fdf3d7;border:1px solid #e5c465;color:#8a6410;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:12px}
+  .info{background:#e8f0fc;border:1px solid #b9cdf0;color:#2c5cbb;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:12px}
+
+  .empty{background:var(--surface);border:1px dashed var(--border2);border-radius:12px;padding:36px;text-align:center;color:var(--dim);font-size:14px;line-height:1.6}
+
+  /* MY / US market tabs */
+  .tabs{display:flex;gap:6px;margin-bottom:12px;flex:0 0 auto}
+  .tabs button{background:var(--surface);border:1px solid var(--border2);color:#4c5768;padding:8px 22px;border-radius:8px;font-size:14px}
+  .tabs button.on{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+
+  /* dd/mm/yyyy datetime input with a Now button */
+  .dtwrap{display:flex;gap:6px}
+  .dtwrap input{flex:1;min-width:0}
+  .nowbtn{background:#fff;border:1px solid var(--border2);color:#3d4756;border-radius:8px;padding:0 10px;font-size:12px;white-space:nowrap}
+  .nowbtn:hover{border-color:var(--blue);color:var(--blue)}
+  .tablewrap{flex:1 1 auto;min-height:0;overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface2);box-shadow:0 1px 3px rgba(30,40,60,.06)}
+  .tablewrap::-webkit-scrollbar{height:12px;width:12px}
+  .tablewrap::-webkit-scrollbar-track{background:#eef1f6}
+  .tablewrap::-webkit-scrollbar-thumb{background:#c3ccd9;border-radius:6px;border:2px solid #eef1f6}
+  .tablewrap::-webkit-scrollbar-thumb:hover{background:#a9b5c6}
+  .tablewrap{scrollbar-width:thin;scrollbar-color:#c3ccd9 #eef1f6}
+
+  table{border-collapse:collapse;width:100%;min-width:1650px;font-size:13px}
+  th{background:#f0f3f8;color:var(--dim);font-weight:600;text-align:left;padding:9px 10px;white-space:nowrap;position:sticky;top:0;z-index:1;border-bottom:1px solid var(--border)}
+  td{padding:9px 10px;border-top:1px solid #e8ecf2;white-space:nowrap;font-variant-numeric:tabular-nums}
+  /* frozen Stock column */
+  tbody td:first-child{position:sticky;left:0;z-index:2;background:inherit;box-shadow:2px 0 0 #e2e7ef}
+  thead th:first-child{position:sticky;left:0;top:0;z-index:3;box-shadow:2px 0 0 #e2e7ef}
+  .mhead td,.msum td,.xrow td{position:static;box-shadow:none}
+  .mstick{position:sticky;left:12px;display:inline-block}
+  .r{text-align:right}
+  .dim{color:var(--dim)}
+  .name{font-weight:600}
+  tbody tr{cursor:pointer;background:var(--surface)}
+  .row-win{background:var(--win-row)}
+  .row-win:hover{background:#d5efe0}
+  .row-loss{background:var(--loss-row)}
+  .row-loss:hover{background:#faecc0}
+  .row-open:hover{background:#f0f4fa}
+  .pl{font-weight:650}
+  .pl-open{color:var(--dim);font-weight:400;font-style:italic}
+  .c-win{color:var(--win)} .c-loss{color:var(--loss)}
+  .badge{display:inline-block;font-size:11px;font-weight:600;border-radius:10px;padding:1px 8px;margin-left:6px;vertical-align:1px}
+  .badge-partial{background:#e8f0fc;color:#2c5cbb;border:1px solid #b9cdf0}
+  .xrow td{border-top:none;white-space:normal}
+  .reasons{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:2px 4px 6px;font-size:13px;line-height:1.5}
+  .reasons span{display:block;color:var(--dim);font-size:12px;margin-bottom:2px}
+  @media(max-width:640px){.reasons{grid-template-columns:1fr}}
+  .fills{padding:4px;font-size:12.5px}
+  .fills table{min-width:0;width:auto;border:1px solid var(--border);border-radius:8px;font-size:12.5px}
+  .fills th{position:static;box-shadow:none;padding:6px 10px}
+  .fills td{position:static;box-shadow:none;padding:6px 10px;background:#fff}
+  .fills .tb{color:var(--win);font-weight:600}
+  .fills .ts{color:var(--loss);font-weight:600}
+
+  /* month header + subtotal rows */
+  .mhead td{background:#e6ebf3;color:#2c3646;font-weight:650;font-size:13px;cursor:pointer;border-top:2px solid #d4dbe6;user-select:none}
+  .mhead:hover td{background:#dde4ef}
+  .arrow{display:inline-block;width:16px;color:var(--dim);transition:transform .25s ease}
+  .arrow.open{transform:rotate(90deg)}
+  @keyframes rowIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+  .anim-row{animation:rowIn .28s ease both}
+  @media (prefers-reduced-motion: reduce){.anim-row{animation:none}.arrow{transition:none}}
+  .msum td{background:#f2f5fa;color:var(--dim);font-size:12.5px;cursor:default}
+  .msum b{color:var(--text);font-variant-numeric:tabular-nums}
+  .msum .sep{margin:0 10px;color:#c3ccd9}
+  .ind-cell{max-width:110px;overflow:hidden;text-overflow:ellipsis}
+
+  .overlay{position:fixed;inset:0;background:rgba(30,40,60,.45);display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto;z-index:10}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;width:100%;max-width:760px;box-shadow:0 12px 40px rgba(30,40,60,.18);position:relative}
+  .modal.narrow{max-width:420px}
+  .x{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:8px;background:#f0f3f8;border:1px solid var(--border2);color:#4c5768;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center}
+  .x:hover{border-color:#dc2626;color:#dc2626;background:#fdeaea}
+  .modal h2{margin:0 0 14px;font-size:19px}
+  .modal h3{margin:16px 0 8px;font-size:14px;color:#3d4756}
+  .modal h3 em{font-weight:400;font-size:12px;color:var(--dim);font-style:normal}
+  .modal p{font-size:14px;line-height:1.6;color:#3d4756}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+  label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dim)}
+  label.wide{margin-top:10px}
+  input,select,textarea{background:#fff;border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit;width:100%}
+  input:focus,select:focus,textarea:focus{outline:2px solid #2f6fed33;border-color:var(--blue)}
+  .modal-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+  .modal-acts.split{display:grid;grid-template-columns:1fr 1fr}
+  .modal-acts.split button{width:100%}
+  .ind-row{display:flex;gap:6px}
+  .ind-row select{flex:1}
+  .mini{background:var(--blue);border:none;color:#fff;border-radius:8px;padding:0 12px;font-size:12px;font-weight:600;white-space:nowrap}
+  .mini:hover{background:#3d7bf0}
+  .icon{width:28px;height:28px;border:none;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;margin-left:4px;padding:0}
+  .icon svg{width:14px;height:14px}
+  .icon.i-edit{background:var(--blue);color:#fff}
+  .icon.i-edit:hover{background:#3d7bf0}
+  .icon.i-del{background:#dc2626;color:#fff}
+  .icon.i-del:hover{background:#e63b3b}
+  .ind-add{display:flex;gap:8px;margin-bottom:12px}
+  .ind-add input{flex:1}
+  .ind-list{list-style:none;margin:0;padding:0;max-height:300px;overflow-y:auto}
+  .ind-list li{display:flex;justify-content:space-between;align-items:center;padding:7px 4px;border-bottom:1px solid #e8ecf2;font-size:14px}
+  .ind-list .del{background:var(--surface);border:1px solid var(--border2);color:#4c5768;border-radius:6px;padding:3px 8px;font-size:12px}
+
+  /* colored section wrappers in the trade dialog */
+  .sect{border:1px solid;border-radius:12px;padding:14px;margin-top:12px}
+  .sect h3{margin:0 0 10px;font-size:14px}
+  .sect-info{background:#f2f5fa;border-color:#d8e0ec}
+  .sect-buy{background:#edf4ff;border-color:#c3d7f3}
+  .sect-buy h3{color:#2c5cbb}
+  .sect-sell{background:#fff6e4;border-color:#ecd6a2}
+  .sect-sell h3{color:#9a6c0a}
+  .sect-plan{background:#eefaf4;border-color:#b9e2cd}
+  .sect-plan h3{color:#0f7a5c}
+  .rr{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:10px}
+  .rr .cell{background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 12px;font-size:12px;color:var(--dim)}
+  .rr .cell b{display:block;font-size:15px;color:var(--text);font-variant-numeric:tabular-nums;margin-top:2px}
+  .rr .cell.hl b{color:#0f7a5c}
+  .rr .cell.rk b{color:#b45309}
+
+  /* buy-signal checklist */
+  .checklist{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px}
+  .checklist-title{font-size:12px;color:var(--dim);margin-bottom:8px}
+  .checklist-title b{color:var(--text)}
+  .check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);padding:4px 0;flex-direction:row}
+  .check input{width:auto}
+  .sig-ok{color:var(--win);font-weight:600}
+  .sig-no{color:var(--loss);font-weight:600}
+  .sigs{font-size:12px;color:var(--dim)}
+
+  /* fill rows inside the dialog */
+  .fill-row{display:grid;grid-template-columns:1fr 1fr 1fr 1.4fr 34px;gap:8px;margin-bottom:8px;align-items:end}
+  @media(max-width:640px){.fill-row{grid-template-columns:1fr 1fr;}}
+  .fill-x{width:34px;height:37px;border:1px solid var(--border2);border-radius:8px;background:#fff;color:#9aa4b4;font-size:14px}
+  .fill-x:hover{border-color:#dc2626;color:#dc2626}
+  .addfill{background:#fff;border:1px dashed var(--border2);color:#3d4756;border-radius:8px;padding:8px 14px;font-size:13px;width:100%;font-weight:600}
+  .addfill:hover{border-color:var(--blue);color:var(--blue)}
+  .sect-summary{display:flex;gap:18px;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-top:10px;font-size:12px;color:var(--dim)}
+  .sect-summary b{display:block;font-size:15px;color:var(--text);font-variant-numeric:tabular-nums;margin-top:2px}
+  .hintline{font-size:12px;color:var(--dim);margin:6px 0 0}
+
+  /* big centered P/L readout — background follows win/loss color, text stays black */
+  .pl-big{text-align:center;background:#f2f5fa;border:1px solid #d8e0ec;border-radius:10px;padding:12px;margin-top:12px}
+  .pl-big .lbl{font-size:12px;color:var(--dim);display:block;margin-bottom:2px}
+  .pl-big b{font-size:22px;font-variant-numeric:tabular-nums;color:#111}
+  .pl-big.pl-win{background:var(--win-row);border-color:#a9dcbc}
+  .pl-big.pl-loss{background:var(--loss-row);border-color:#e6cd82}
+  .pl-big.pl-win .lbl,.pl-big.pl-loss .lbl{color:#333}
+
+  /* loading spinner */
+  .busy-overlay{position:fixed;inset:0;background:rgba(255,255,255,.7);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:20}
+  .spinner{width:44px;height:44px;border:4px solid #d6ddea;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .busy-text{font-size:14px;color:#3d4756;font-weight:600}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <header class="head">
+    <div>
+      <h1>Trade Log</h1>
+      <p class="sub">Bursa Malaysia + US equities</p>
+    </div>
+    <div class="head-acts">
+      <button class="btn" @click="$refs.file.click()">Import Excel</button>
+      <button class="btn" @click="exportXlsx">Export Excel</button>
+      <input ref="file" type="file" accept=".xlsx,.xls" style="display:none" @change="importXlsx" />
+      <button class="primary" @click="openAdd">+ New position</button>
+    </div>
+  </header>
+
+  <div v-if="saveError" class="warn">Something went wrong saving or importing. Your last change may not persist — try again.</div>
+  <div v-if="!hasStorage" class="info">Opened outside Claude: data is kept in this browser tab only. Use <b>Export Excel</b> before closing, and <b>Import Excel</b> next time.</div>
+
+  <nav class="tabs">
+    <button :class="{ on: marketTab === 'MY' }" @click="marketTab = 'MY'">Malaysia (MYR)</button>
+    <button :class="{ on: marketTab === 'US' }" @click="marketTab = 'US'">United States (USD)</button>
+  </nav>
+
+  <div v-if="filtered.length === 0" class="empty">
+    No {{ marketTab === 'MY' ? 'Malaysia' : 'US' }} positions yet. Press <b>New position</b> to log your first one, or <b>Import Excel</b> to load an existing log.
+  </div>
+
+  <div v-else class="tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Stock</th><th class="r">Units</th>
+          <th class="r">Avg cost</th><th class="r">Platform fee (buy)</th><th class="r">Total buy cost</th>
+          <th class="r">Avg sell price</th><th class="r">Platform fee (sell)</th><th class="r">Total sell cost</th>
+          <th class="r">P/L</th><th class="r">P/L %</th><th>First buy</th><th>Last sell</th>
+          <th class="r">Days</th><th>Duration</th><th>Mkt</th><th>Industry</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <template v-for="g in grouped" :key="g.key">
+          <tr class="mhead" @click="toggleMonth(g.key)">
+            <td colspan="17"><span class="mstick"><span class="arrow" :class="{ open: isOpen(g.key) }">▸</span>{{ g.label }}</span></td>
+          </tr>
+
+          <template v-if="isOpen(g.key)">
+          <template v-for="p in g.items" :key="p.id">
+            <tr class="anim-row" :class="rowClass(p)" @click="expanded = expanded === p.id ? null : p.id">
+              <td class="name">{{ p.name || '—' }}<span v-if="calc(p).status === 'partial'" class="badge badge-partial">partial</span></td>
+              <td class="r">{{ unitsCell(p) }}</td>
+              <td class="r">{{ calc(p).buyUnits ? priceN(calc(p).avgCost) : '—' }}</td>
+              <td class="r dim">{{ money(calc(p).buyFees, p.market) }}</td>
+              <td class="r">{{ money(calc(p).totalBuyCost, p.market) }}</td>
+              <td class="r">{{ calc(p).sellUnits ? priceN(calc(p).avgSell) : '—' }}</td>
+              <td class="r dim">{{ calc(p).sellUnits ? money(calc(p).sellFees, p.market) : '—' }}</td>
+              <td class="r">{{ calc(p).sellUnits ? money(calc(p).totalSellCost, p.market) : '—' }}</td>
+              <td class="r pl" :class="plCellClass(p)">{{ plCell(p) }}</td>
+              <td class="r" :class="plCellClass(p)">{{ pctCell(p) }}</td>
+              <td class="dim">{{ dt(calc(p).firstBuyAt) }}</td>
+              <td class="dim">{{ dt(calc(p).lastSellAt) }}</td>
+              <td class="r">{{ calc(p).days === null ? '—' : calc(p).days }}</td>
+              <td class="dim">{{ calc(p).dur ? calc(p).dur.text : '—' }}</td>
+              <td>{{ p.market }}</td>
+              <td class="dim ind-cell" :title="p.industry">{{ p.industry || '—' }}</td>
+              <td class="acts" @click.stop>
+                <button class="icon i-edit" :title="calc(p).status === 'closed' ? 'Edit' : 'Add fills / edit'" @click="openEdit(p)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                </button>
+                <button class="icon i-del" title="Delete" @click="askDelete(p)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                </button>
+              </td>
+            </tr>
+            <tr v-if="expanded === p.id" class="xrow anim-row" :class="rowClass(p)">
+              <td colspan="17">
+                <div class="fills">
+                  <table>
+                    <thead><tr><th>Fill</th><th class="r">Units</th><th class="r">Price</th><th class="r">Platform fee</th><th>Datetime</th></tr></thead>
+                    <tbody>
+                      <tr v-for="(f, i) in p.buys" :key="'b'+i">
+                        <td class="tb">BUY {{ i+1 }}</td><td class="r">{{ units(f.units) }}</td><td class="r">{{ priceN(num(f.price)) }}</td><td class="r">{{ money(num(f.fee), p.market) }}</td><td>{{ dt(f.at) }}</td>
+                      </tr>
+                      <tr v-for="(f, i) in p.sells" :key="'s'+i">
+                        <td class="ts">SELL {{ i+1 }}</td><td class="r">{{ units(f.units) }}</td><td class="r">{{ priceN(num(f.price)) }}</td><td class="r">{{ money(num(f.fee), p.market) }}</td><td>{{ dt(f.at) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="reasons">
+                  <div><span>Reason to buy</span>{{ p.reasonBuy || 'Not recorded' }}</div>
+                  <div><span>Reason to sell</span>{{ p.reasonSell || (calc(p).status === 'closed' ? 'Not recorded' : 'Position still open') }}</div>
+                  <div><span>Signals at entry</span>{{ signalText(p) || 'Not recorded' }}</div>
+                  <div><span>Profit &amp; cut loss plan</span>{{ planText(p) || 'Not set' }}</div>
+                  <div><span>Remarks</span>{{ p.remarks || '—' }}</div>
+                </div>
+              </td>
+            </tr>
+          </template>
+          </template>
+
+          <tr class="msum">
+            <td colspan="17">
+              <span class="mstick">
+              {{ g.items.length }} positions
+              <span class="sep">|</span> Fees <b>{{ money(mSum(g).fees, marketTab) }}</b>
+              <span class="sep">|</span> P/L after fees <b :class="tone(mSum(g).pl)">{{ money(mSum(g).pl, marketTab) }}</b>
+              <span class="sep">|</span> Win rate <b>{{ mSum(g).winRate === null ? '—' : mSum(g).winRate + '%' }}</b> ({{ mSum(g).wins }}W / {{ mSum(g).losses }}L)
+              </span>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- add / edit position -->
+  <div v-if="showForm" class="overlay">
+    <div class="modal">
+      <button class="x" title="Close" @click="showForm = false">✕</button>
+      <h2>{{ editId ? 'Edit position' : 'New position' }}</h2>
+
+      <!-- position info + rules of buy in -->
+      <div class="sect sect-info">
+        <div class="grid">
+          <label>Market
+            <select v-model="form.market">
+              <option value="MY">Malaysia (MYR)</option>
+              <option value="US">United States (USD)</option>
+            </select>
+          </label>
+          <label>Stock name<input v-model="form.name" placeholder="e.g. CBHB" /></label>
+          <label>Industry
+            <div class="ind-row">
+              <select v-model="form.industry">
+                <option value="">Select…</option>
+                <option v-for="i in sortedIndustries" :key="i" :value="i">{{ i }}</option>
+              </select>
+              <button type="button" class="mini" @click="showInd = true">Manage</button>
+            </div>
+          </label>
+        </div>
+
+        <div class="checklist">
+          <div class="checklist-title">Rules of buy in — core signals:
+            <b :class="coreCount >= 2 ? 'sig-ok' : 'sig-no'">{{ coreCount }}/3</b>
+            <span class="sigs"> (2/3 hit = buy signal · volume is confirmation to enter)</span>
+          </div>
+          <label class="check"><input type="checkbox" v-model="form.sigMacd" /> MACD golden cross</label>
+          <label class="check"><input type="checkbox" v-model="form.sigSar" /> SAR turn green</label>
+          <label class="check"><input type="checkbox" v-model="form.sigRsi" /> RSI above 50, approaching / over 70</label>
+          <label class="check"><input type="checkbox" v-model="form.sigVol" /> MAVOL — volume confirms, no huge gap vs previous days</label>
+        </div>
+      </div>
+
+      <!-- buy fills -->
+      <div class="sect sect-buy">
+        <h3>Buy <em>(press "+ Add buy" each time you buy in again — average cost updates automatically)</em></h3>
+        <div v-for="(f, i) in form.buys" :key="'fb'+i" class="fill-row">
+          <label>Units<input type="number" v-model="f.units" placeholder="e.g. 5000" /></label>
+          <label>Buy price (per unit)<input type="number" step="0.0001" v-model="f.price" /></label>
+          <label>Platform fee<input type="number" step="0.01" v-model="f.fee" placeholder="Moomoo" /></label>
+          <label>Buy datetime
+            <div class="dtwrap">
+              <input :value="dmy(f.at)" @change="f.at = parseDmy($event.target.value)" placeholder="dd/mm/yyyy hh:mm:ss" />
+              <button type="button" class="nowbtn" @click="f.at = nowIso()">Now</button>
+            </div>
+          </label>
+          <button class="fill-x" title="Remove this buy" @click="form.buys.splice(i,1)" :disabled="form.buys.length===1">✕</button>
+        </div>
+        <button class="addfill" @click="form.buys.push(blankFill())">+ Add buy</button>
+
+        <div class="sect-summary">
+          <div>Total units<b>{{ units(fc.buyUnits || '') }}</b></div>
+          <div>Average cost<b>{{ fc.buyUnits ? priceN(fc.avgCost) : '—' }}</b></div>
+          <div>Platform fees (buy)<b>{{ money(fc.buyFees, form.market) }}</b></div>
+          <div>Total buy cost<b>{{ money(fc.totalBuyCost, form.market) }}</b></div>
+        </div>
+        <label class="wide">Reason to buy<textarea rows="2" v-model="form.reasonBuy" placeholder="e.g. sector rotation, quarterly report catalyst"></textarea></label>
+      </div>
+
+      <!-- profit & cut loss plan (1:2R) -->
+      <div class="sect sect-plan">
+        <h3>Profit &amp; cut loss plan <em>(1:2R — based on your average cost above)</em></h3>
+        <div class="grid">
+          <label>Cut loss price<input type="number" step="0.0001" v-model="form.stop" placeholder="your stop loss" /></label>
+        </div>
+        <p v-if="form.stop !== '' && fc.avgCost && num(form.stop) >= fc.avgCost" class="hintline" style="color:#b45309">⚠ Cut loss price should be below your average cost for a long trade.</p>
+
+        <div class="rr" v-if="pc.valid">
+          <div class="cell rk">Risk per unit (1R)<b>{{ priceN(pc.risk) }}</b></div>
+          <div class="cell hl">1R target price<b>{{ priceN(pc.t1) }}</b></div>
+          <div class="cell hl">2R target price<b>{{ priceN(pc.t2) }}</b></div>
+          <div class="cell rk">Total risk if cut loss<b>{{ money(pc.totalRisk, form.market) }}</b></div>
+          <div class="cell hl">Profit if all sold at 2R<b>{{ money(pc.totalReward, form.market) }}</b></div>
+        </div>
+        <p v-else class="hintline">Enter your buy fills and a cut loss price — the 1R / 2R target prices will show here.</p>
+
+        <h3 style="margin-top:14px">分批卖出 plan <em>(optional — split your exit into batches)</em></h3>
+        <div v-for="(t, i) in form.targets" :key="'tg'+i" class="fill-row" style="grid-template-columns:1fr 1fr 1.4fr 34px">
+          <label>Units to sell<input type="number" v-model="t.units" placeholder="e.g. 5000" /></label>
+          <label>Target price<input type="number" step="0.0001" v-model="t.price" /></label>
+          <div class="auto">Est. profit vs avg cost<b :class="tgtProfit(t) !== null && tgtProfit(t) < 0 ? 'c-loss' : ''">{{ tgtProfit(t) === null ? '—' : money(tgtProfit(t), form.market) }}</b></div>
+          <button class="fill-x" title="Remove this target" @click="form.targets.splice(i,1)">✕</button>
+        </div>
+        <button class="addfill" @click="form.targets.push({ units: '', price: '' })">+ Add exit target</button>
+        <div class="sect-summary" v-if="planUnits">
+          <div>Planned units<b>{{ units(planUnits) }} / {{ units(fc.buyUnits || 0) }}</b></div>
+          <div>Planned profit (before fees)<b :class="planProfit < 0 ? 'c-loss' : ''">{{ money(planProfit, form.market) }}</b></div>
+        </div>
+      </div>
+
+      <!-- sell fills -->
+      <div class="sect sect-sell">
+        <h3>Sell <em>(leave empty while holding — press "+ Add sell" each time you sell some units)</em></h3>
+        <div v-for="(f, i) in form.sells" :key="'fs'+i" class="fill-row">
+          <label>Units<input type="number" v-model="f.units" placeholder="e.g. 5000" /></label>
+          <label>Sell price (per unit)<input type="number" step="0.0001" v-model="f.price" /></label>
+          <label>Platform fee<input type="number" step="0.01" v-model="f.fee" placeholder="Moomoo" /></label>
+          <label>Sell datetime
+            <div class="dtwrap">
+              <input :value="dmy(f.at)" @change="f.at = parseDmy($event.target.value)" placeholder="dd/mm/yyyy hh:mm:ss" />
+              <button type="button" class="nowbtn" @click="f.at = nowIso()">Now</button>
+            </div>
+          </label>
+          <button class="fill-x" title="Remove this sell" @click="form.sells.splice(i,1)">✕</button>
+        </div>
+        <button class="addfill" @click="form.sells.push(blankFill())">+ Add sell</button>
+
+        <div class="sect-summary" v-if="fc.sellUnits">
+          <div>Units sold<b>{{ units(fc.sellUnits) }}</b></div>
+          <div>Still holding<b>{{ units(Math.max(fc.buyUnits - fc.sellUnits, 0)) }}</b></div>
+          <div>Average sell price<b>{{ priceN(fc.avgSell) }}</b></div>
+          <div>Platform fees (sell)<b>{{ money(fc.sellFees, form.market) }}</b></div>
+          <div>Total sell cost<b>{{ money(fc.totalSellCost, form.market) }}</b></div>
+        </div>
+        <p v-if="fc.sellUnits > fc.buyUnits" class="hintline" style="color:#b45309">⚠ You've entered more units sold than bought — please check the fills.</p>
+        <label class="wide">Reason to sell<textarea rows="2" v-model="form.reasonSell" placeholder="e.g. hit target / cut loss / momentum faded"></textarea></label>
+      </div>
+
+      <!-- P/L, centered — background turns green (win) or yellow (loss) -->
+      <div class="pl-big" :class="fc.status === 'closed' ? (fc.pl >= 0 ? 'pl-win' : 'pl-loss') : (fc.status === 'partial' ? (fc.realized >= 0 ? 'pl-win' : 'pl-loss') : '')">
+        <span class="lbl">{{ fc.status === 'partial' ? 'Realized P/L so far (position still open)' : 'P/L' }}</span>
+        <b v-if="fc.status === 'closed'">{{ money(fc.pl, form.market) + ' (' + pctText(fc.pl, fc.totalBuyCost) + ')' }}</b>
+        <b v-else-if="fc.status === 'partial'">{{ money(fc.realized, form.market) }}</b>
+        <b v-else>—</b>
+      </div>
+
+      <label class="wide">Remarks<textarea rows="2" v-model="form.remarks" placeholder="any other notes"></textarea></label>
+
+      <div class="modal-acts split">
+        <button class="btn" @click="showForm = false">Cancel</button>
+        <button class="primary" @click="submitPosition">{{ editId ? 'Save changes' : 'Add position' }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- delete confirmation -->
+  <div v-if="confirmDel" class="overlay">
+    <div class="modal narrow">
+      <button class="x" title="Close" @click="confirmDel = null">✕</button>
+      <h2>Delete position?</h2>
+      <p>This will permanently remove <b>{{ confirmDel.name }}</b>
+        ({{ units(calc(confirmDel).buyUnits) }} units, first bought {{ dt(calc(confirmDel).firstBuyAt) }})
+        including all its buy and sell records. This cannot be undone.</p>
+      <div class="modal-acts">
+        <button class="btn" @click="confirmDel = null">Cancel</button>
+        <button class="danger" @click="doDelete">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- manage industries -->
+  <div v-if="showInd" class="overlay">
+    <div class="modal narrow">
+      <button class="x" title="Close" @click="showInd = false">✕</button>
+      <h2>Industries</h2>
+      <div class="ind-add">
+        <input v-model="newInd" placeholder="New industry name" @keydown.enter="addIndustry" />
+        <button class="primary" @click="addIndustry">Add</button>
+      </div>
+      <ul class="ind-list">
+        <li v-for="i in sortedIndustries" :key="i">{{ i }}
+          <button class="del" @click="removeIndustry(i)">Remove</button>
+        </li>
+        <li v-if="industries.length === 0" class="dim">List is empty — add your first industry above.</li>
+      </ul>
+      <div class="modal-acts">
+        <button class="btn" @click="showInd = false">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- import / export progress -->
+  <div v-if="busy" class="busy-overlay">
+    <div class="spinner"></div>
+    <div class="busy-text">{{ busy }}</div>
+  </div>
+
+</div>
+
+<script>
+const { createApp } = Vue;
+
+const blankFill = () => ({ units: "", price: "", fee: "", at: "" });
+
+// blank position template
+const EMPTY = () => ({
+  market: "MY", name: "", industry: "",
+  buys: [blankFill()], sells: [],
+  stop: "", targets: [],
+  reasonBuy: "", reasonSell: "", remarks: "",
+  sigMacd: false, sigSar: false, sigRsi: false, sigVol: false,
+});
+
+const DEFAULT_INDUSTRIES = ["Semiconductor","Technology","Finance","Consumer","Utilities","Property","Telecommunication","Construction","Plantation","Healthcare","Energy","Industrial","REIT"];
+
+createApp({
+  data() {
+    return {
+      positions: [],
+      industries: DEFAULT_INDUSTRIES.slice(),
+      hasStorage: typeof window.storage !== "undefined",
+      saveError: false,
+      busy: null,
+      showForm: false, showInd: false,
+      editId: null, expanded: null, newInd: "",
+      confirmDel: null,
+      openMonths: {},
+      marketTab: "MY", // which market tab is showing
+      form: EMPTY(),
+    };
+  },
+
+  computed: {
+    sortedIndustries() {
+      return [...this.industries].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    },
+    coreCount() {
+      return (this.form.sigMacd ? 1 : 0) + (this.form.sigSar ? 1 : 0) + (this.form.sigRsi ? 1 : 0);
+    },
+    // live calculation of the form being edited
+    fc() { return this.calc(this.form); },
+
+    // 1:2R plan numbers, based on average cost and the cut loss price
+    pc() {
+      const entry = this.fc.avgCost, stop = this.num(this.form.stop);
+      const valid = this.form.stop !== "" && entry > 0 && stop > 0 && stop < entry;
+      if (!valid) return { valid: false };
+      const risk = entry - stop;
+      return {
+        valid: true, risk,
+        t1: entry + risk, t2: entry + 2 * risk,
+        totalRisk: risk * this.fc.buyUnits,
+        totalReward: 2 * risk * this.fc.buyUnits,
+      };
+    },
+    planUnits() {
+      return (this.form.targets || []).reduce((s, t) => s + this.num(t.units), 0);
+    },
+    planProfit() {
+      return (this.form.targets || []).reduce((s, t) => {
+        if (this.num(t.units) <= 0 || t.price === "") return s;
+        return s + this.num(t.units) * (this.num(t.price) - this.fc.avgCost);
+      }, 0);
+    },
+
+    // positions of the active market tab
+    filtered() {
+      return this.positions.filter((p) => (p.market || "MY") === this.marketTab);
+    },
+
+    // active tab's positions sorted by first buy date, grouped by month — oldest first
+    grouped() {
+      const withDate = (p) => {
+        const c = this.calc(p);
+        return c.firstBuyAt ? new Date(c.firstBuyAt).getTime() : 0;
+      };
+      const sorted = [...this.filtered].sort((a, b) => withDate(a) - withDate(b));
+      const groups = [];
+      let cur = null;
+      sorted.forEach((p) => {
+        const at = this.calc(p).firstBuyAt;
+        const d = at ? new Date(at) : null;
+        const valid = d && !isNaN(d);
+        const key = valid ? d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") : "undated";
+        const label = valid ? d.toLocaleDateString("en-MY", { month: "long", year: "numeric" }) : "No buy date";
+        if (!cur || cur.key !== key) { cur = { key, label, items: [] }; groups.push(cur); }
+        cur.items.push(p);
+      });
+      return groups;
+    },
+  },
+
+  async mounted() {
+    if (this.hasStorage) {
+      try {
+        const r = await window.storage.get("positions-v1");
+        if (r && r.value) this.positions = JSON.parse(r.value);
+      } catch (e) {
+        // no v1 positions yet — try migrating from the old single-fill format
+        try {
+          const old = await window.storage.get("trades-v2");
+          if (old && old.value) {
+            const trades = JSON.parse(old.value);
+            this.positions = trades.map((t) => this.migrateOld(t));
+            await this.persist();
+          }
+        } catch (e2) { /* first run */ }
+      }
+      try {
+        const r = await window.storage.get("industries-v1");
+        if (r && r.value) this.industries = JSON.parse(r.value);
+      } catch (e) { /* first run */ }
+    }
+  },
+
+  methods: {
+    blankFill,
+
+    // estimated profit of one planned exit target (before fees)
+    tgtProfit(t) {
+      if (this.num(t.units) <= 0 || t.price === "" || !this.fc.avgCost) return null;
+      return this.num(t.units) * (this.num(t.price) - this.fc.avgCost);
+    },
+    planText(p) {
+      const bits = [];
+      if (p.stop !== "" && p.stop !== undefined && p.stop !== null && this.num(p.stop) > 0) bits.push("Cut loss @ " + this.priceN(this.num(p.stop)));
+      (p.targets || []).forEach((t) => {
+        if (this.num(t.units) > 0 && t.price !== "") bits.push(this.units(t.units) + " @ " + this.priceN(this.num(t.price)));
+      });
+      return bits.join(" · ");
+    },
+
+    // convert an old single-fill trade record into a position
+    migrateOld(t) {
+      return {
+        id: t.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        market: t.market || "MY", name: t.name || "", industry: t.industry || "",
+        buys: [{ units: t.units || "", price: t.entryPrice || "", fee: t.buyFee || "", at: t.buyAt || "" }],
+        sells: (t.sellPrice !== "" && t.sellPrice !== undefined && t.sellPrice !== null)
+          ? [{ units: t.units || "", price: t.sellPrice, fee: t.sellFee || "", at: t.sellAt || "" }] : [],
+        reasonBuy: t.reasonBuy || "", reasonSell: t.reasonSell || "", remarks: t.remarks || "",
+        stop: "", targets: [],
+        sigMacd: !!t.sigMacd, sigSar: !!t.sigSar, sigRsi: !!t.sigRsi, sigVol: !!t.sigVol,
+      };
+    },
+
+    // ---------- month expand / collapse ----------
+    toggleMonth(key) { this.openMonths[key] = !this.openMonths[key]; },
+    isOpen(key) { return !!this.openMonths[key]; },
+
+    // ---------- number / date helpers ----------
+    num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; },
+    units(v) { const n = parseFloat(v); return isNaN(n) ? "—" : n.toLocaleString("en-MY"); },
+    priceN(n) {
+      if (n === null || n === undefined || isNaN(n)) return "—";
+      return n.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    },
+    money(n, market) {
+      if (n === null || n === undefined || isNaN(n)) return "—";
+      const sym = market === "MY" ? "RM " : "$";
+      return (n < 0 ? "-" : "") + sym + Math.abs(n).toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    },
+    pctText(pl, base) {
+      if (!base) return "—";
+      return ((pl / base) * 100).toFixed(2) + "%";
+    },
+    tone(n) { return n > 0 ? "c-win" : n < 0 ? "c-loss" : ""; },
+    dt(s) {
+      // display format: dd/mm/yyyy hh:mm:ss
+      if (!s) return "—";
+      const d = new Date(s);
+      if (isNaN(d)) return "—";
+      const p = (n) => String(n).padStart(2, "0");
+      return p(d.getDate()) + "/" + p(d.getMonth() + 1) + "/" + d.getFullYear() + " " +
+             p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    },
+    // dd/mm/yyyy input helpers — stored internally as ISO so all math keeps working
+    dmy(s) {
+      if (!s) return "";
+      const d = new Date(s);
+      if (isNaN(d)) return "";
+      const p = (n) => String(n).padStart(2, "0");
+      return p(d.getDate()) + "/" + p(d.getMonth() + 1) + "/" + d.getFullYear() + " " +
+             p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    },
+    parseDmy(v) {
+      v = String(v).trim();
+      if (!v) return "";
+      const m = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+      if (!m) return "";
+      const dd = +m[1], mm = +m[2], yy = +m[3], hh = +(m[4] || 0), mi = +(m[5] || 0), ss = +(m[6] || 0);
+      const d = new Date(yy, mm - 1, dd, hh, mi, ss);
+      if (isNaN(d) || d.getDate() !== dd || d.getMonth() !== mm - 1) return "";
+      const p = (n) => String(n).padStart(2, "0");
+      return yy + "-" + p(mm) + "-" + p(dd) + "T" + p(hh) + ":" + p(mi) + ":" + p(ss);
+    },
+    nowIso() {
+      const d = new Date();
+      const p = (n) => String(n).padStart(2, "0");
+      return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" +
+             p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    },
+    durationMs(ms) {
+      const d = Math.floor(ms / 86400000); ms -= d * 86400000;
+      const h = Math.floor(ms / 3600000); ms -= h * 3600000;
+      const m = Math.floor(ms / 60000); ms -= m * 60000;
+      const s = Math.floor(ms / 1000);
+      return { d, h, m, s, text: d + "d " + h + "h " + m + "m " + s + "s" };
+    },
+    signalText(p) {
+      const parts = [];
+      if (p.sigMacd) parts.push("MACD golden cross");
+      if (p.sigSar) parts.push("SAR green");
+      if (p.sigRsi) parts.push("RSI > 50");
+      if (p.sigVol) parts.push("Volume confirmed");
+      return parts.join(", ");
+    },
+
+    // ---------- position math — the heart of the app ----------
+    // avg cost = pure weighted price (fees NOT inside the average, matching Moomoo display)
+    // totals   = value + fees, matching your Excel
+    calc(p) {
+      const live = (f) => this.num(f.units) > 0 && f.price !== "" && f.price !== null && f.price !== undefined;
+      const buys = (p.buys || []).filter(live);
+      const sells = (p.sells || []).filter(live);
+
+      const buyUnits = buys.reduce((s, f) => s + this.num(f.units), 0);
+      const buyGross = buys.reduce((s, f) => s + this.num(f.units) * this.num(f.price), 0);
+      const buyFees = (p.buys || []).reduce((s, f) => s + this.num(f.fee), 0);
+      const sellUnits = sells.reduce((s, f) => s + this.num(f.units), 0);
+      const sellGross = sells.reduce((s, f) => s + this.num(f.units) * this.num(f.price), 0);
+      const sellFees = sells.reduce((s, f) => s + this.num(f.fee), 0);
+
+      const avgCost = buyUnits ? buyGross / buyUnits : 0;
+      const avgSell = sellUnits ? sellGross / sellUnits : null;
+      const totalBuyCost = buyGross + buyFees;
+      const totalSellCost = sellUnits ? sellGross + sellFees : null;
+
+      const status = sellUnits <= 0 ? "open" : (sellUnits >= buyUnits ? "closed" : "partial");
+      // full position P/L: everything received minus everything paid (all fees included)
+      const pl = status === "closed" ? sellGross - sellFees - totalBuyCost : null;
+      // realized P/L while partially sold: sold units measured against average cost
+      const realized = status === "partial" ? sellGross - sellFees - sellUnits * avgCost : null;
+
+      const buyTimes = buys.map((f) => new Date(f.at).getTime()).filter((t) => !isNaN(t));
+      const sellTimes = sells.map((f) => new Date(f.at).getTime()).filter((t) => !isNaN(t));
+      const firstBuyAt = buyTimes.length ? new Date(Math.min(...buyTimes)).toISOString() : null;
+      const lastSellAt = sellTimes.length ? new Date(Math.max(...sellTimes)).toISOString() : null;
+      let dur = null, days = null;
+      if (status === "closed" && firstBuyAt && lastSellAt) {
+        const ms = new Date(lastSellAt) - new Date(firstBuyAt);
+        if (ms >= 0) { dur = this.durationMs(ms); days = dur.d; }
+      }
+
+      return { buyUnits, buyGross, buyFees, sellUnits, sellGross, sellFees,
+               avgCost, avgSell, totalBuyCost, totalSellCost, status, pl, realized,
+               firstBuyAt, lastSellAt, dur, days };
+    },
+
+    rowClass(p) {
+      const c = this.calc(p);
+      if (c.status !== "closed") return "row-open";
+      return c.pl >= 0 ? "row-win" : "row-loss";
+    },
+    unitsCell(p) {
+      const c = this.calc(p);
+      if (c.status === "partial") return this.units(c.sellUnits) + " / " + this.units(c.buyUnits);
+      return this.units(c.buyUnits || "");
+    },
+    plCell(p) {
+      const c = this.calc(p);
+      if (c.status === "closed") return this.money(c.pl, p.market);
+      if (c.status === "partial") return this.money(c.realized, p.market);
+      return "open";
+    },
+    plCellClass(p) {
+      const c = this.calc(p);
+      if (c.status === "closed") return c.pl >= 0 ? "c-win" : "c-loss";
+      if (c.status === "partial") return c.realized >= 0 ? "c-win" : "c-loss";
+      return "pl-open";
+    },
+    pctCell(p) {
+      const c = this.calc(p);
+      if (c.status === "closed") return this.pctText(c.pl, c.totalBuyCost);
+      return "—";
+    },
+
+    // monthly subtotal (single currency — the group only holds the active tab's market)
+    mSum(g) {
+      const s = { fees: 0, pl: 0, wins: 0, losses: 0 };
+      g.items.forEach((p) => {
+        const c = this.calc(p);
+        s.fees += c.buyFees + c.sellFees;
+        if (c.status !== "closed") return;
+        s.pl += c.pl;
+        if (c.pl >= 0) s.wins++; else s.losses++;
+      });
+      const n = s.wins + s.losses;
+      s.winRate = n ? Math.round((s.wins / n) * 100) : null;
+      return s;
+    },
+
+    // ---------- saving ----------
+    async persist() {
+      if (!this.hasStorage) return;
+      try {
+        await window.storage.set("positions-v1", JSON.stringify(this.positions));
+        this.saveError = false;
+      } catch (e) { this.saveError = true; }
+    },
+    async persistInd() {
+      if (!this.hasStorage) return;
+      try { await window.storage.set("industries-v1", JSON.stringify(this.industries)); }
+      catch (e) { this.saveError = true; }
+    },
+
+    // ---------- positions ----------
+    openAdd() { this.form = EMPTY(); this.form.market = this.marketTab; this.editId = null; this.showForm = true; },
+    openEdit(p) {
+      this.form = JSON.parse(JSON.stringify({ ...EMPTY(), ...p }));
+      if (!this.form.buys.length) this.form.buys = [blankFill()];
+      this.editId = p.id;
+      this.showForm = true;
+    },
+    submitPosition() {
+      const c = this.calc(this.form);
+      if (!this.form.name.trim() || !c.buyUnits || !this.form.buys.some((f) => f.at)) return;
+      if (c.sellUnits > c.buyUnits) return; // oversold — the warning in the dialog explains
+      const clean = JSON.parse(JSON.stringify(this.form));
+      // drop completely empty fill rows
+      clean.buys = clean.buys.filter((f) => this.num(f.units) > 0 || f.price !== "" || f.fee !== "" || f.at !== "");
+      clean.sells = clean.sells.filter((f) => this.num(f.units) > 0 || f.price !== "" || f.fee !== "" || f.at !== "");
+      if (this.editId) {
+        clean.id = this.editId;
+        this.positions = this.positions.map((p) => (p.id === this.editId ? clean : p));
+      } else {
+        clean.id = Date.now().toString(36);
+        this.positions = [clean, ...this.positions];
+      }
+      this.showForm = false;
+      const at = c.firstBuyAt ? new Date(c.firstBuyAt) : null;
+      if (at && !isNaN(at)) this.openMonths[at.getFullYear() + "-" + String(at.getMonth() + 1).padStart(2, "0")] = true;
+      this.persist();
+    },
+    askDelete(p) { this.confirmDel = p; },
+    doDelete() {
+      if (!this.confirmDel) return;
+      this.positions = this.positions.filter((p) => p.id !== this.confirmDel.id);
+      this.confirmDel = null;
+      this.persist();
+    },
+
+    // ---------- industries ----------
+    addIndustry() {
+      const v = this.newInd.trim();
+      if (!v || this.industries.includes(v)) return;
+      this.industries.push(v);
+      this.newInd = "";
+      this.persistInd();
+    },
+    removeIndustry(v) {
+      this.industries = this.industries.filter((i) => i !== v);
+      this.persistInd();
+    },
+
+    // ---------- Excel export / import ----------
+    // one row per fill; position-level info and computed summary on the first row of each position
+    async exportXlsx() {
+      this.busy = "Exporting to Excel…";
+      await new Promise((r) => setTimeout(r, 60));
+      try {
+        const rows = [];
+        this.positions.forEach((p) => {
+          const c = this.calc(p);
+          const meta = (first) => first ? {
+            "Industry": p.industry, "Signals": this.signalText(p),
+            "Reason to buy": p.reasonBuy || "", "Reason to sell": p.reasonSell || "", "Remarks": p.remarks || "",
+            "Avg cost": c.buyUnits ? c.avgCost : "", "Total buy cost": c.totalBuyCost,
+            "Total sell cost": c.totalSellCost === null ? "" : c.totalSellCost,
+            "P/L": c.status === "closed" ? c.pl : "", "P/L %": c.status === "closed" && c.totalBuyCost ? (c.pl / c.totalBuyCost * 100) : "",
+            "Status": c.status,
+            "Cut loss price": p.stop !== "" && p.stop !== undefined ? this.num(p.stop) : "",
+            "Planned exits": (p.targets || []).filter((t) => this.num(t.units) > 0 && t.price !== "").map((t) => this.num(t.units) + "@" + this.num(t.price)).join("; "),
+          } : { "Industry": "", "Signals": "", "Reason to buy": "", "Reason to sell": "", "Remarks": "",
+                "Avg cost": "", "Total buy cost": "", "Total sell cost": "", "P/L": "", "P/L %": "", "Status": "", "Cut loss price": "", "Planned exits": "" };
+          let first = true;
+          (p.buys || []).forEach((f) => {
+            rows.push({ "Position ID": p.id, "Market": p.market, "Stock name": p.name, "Type": "BUY",
+              "Units": this.num(f.units), "Price": this.num(f.price), "Platform fee": this.num(f.fee), "Datetime": f.at || "", ...meta(first) });
+            first = false;
+          });
+          (p.sells || []).forEach((f) => {
+            rows.push({ "Position ID": p.id, "Market": p.market, "Stock name": p.name, "Type": "SELL",
+              "Units": this.num(f.units), "Price": this.num(f.price), "Platform fee": this.num(f.fee), "Datetime": f.at || "", ...meta(first) });
+            first = false;
+          });
+        });
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Fills");
+        XLSX.writeFile(wb, "trade-log.xlsx");
+      } catch (e) { this.saveError = true; }
+      this.busy = null;
+    },
+
+    async importXlsx(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      this.busy = "Importing from Excel…";
+      await new Promise((r) => setTimeout(r, 60));
+      try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        let imported = [];
+
+        if (rows.length && rows[0]["Type"] !== undefined && rows[0]["Position ID"] !== undefined) {
+          // new fill-level format: group rows by Position ID
+          const map = new Map();
+          const sig = (s, w) => String(s).toLowerCase().includes(w);
+          rows.forEach((r) => {
+            const pid = String(r["Position ID"]);
+            if (!pid || !String(r["Stock name"] || "").trim()) return;
+            if (!map.has(pid)) {
+              map.set(pid, {
+                id: pid, market: r["Market"] === "US" ? "US" : "MY",
+                name: String(r["Stock name"]), industry: "", buys: [], sells: [],
+                reasonBuy: "", reasonSell: "", remarks: "",
+                sigMacd: false, sigSar: false, sigRsi: false, sigVol: false,
+              });
+            }
+            const p = map.get(pid);
+            // position-level info lives on the first row that carries it
+            if (r["Industry"]) p.industry = String(r["Industry"]);
+            if (r["Reason to buy"]) p.reasonBuy = String(r["Reason to buy"]);
+            if (r["Reason to sell"]) p.reasonSell = String(r["Reason to sell"]);
+            if (r["Remarks"]) p.remarks = String(r["Remarks"]);
+            if (r["Signals"]) { p.sigMacd = sig(r["Signals"], "macd"); p.sigSar = sig(r["Signals"], "sar"); p.sigRsi = sig(r["Signals"], "rsi"); p.sigVol = sig(r["Signals"], "volume"); }
+            if (r["Cut loss price"] !== "" && r["Cut loss price"] !== undefined) p.stop = String(r["Cut loss price"]);
+            if (r["Planned exits"]) {
+              p.targets = String(r["Planned exits"]).split(";").map((s) => {
+                const m = s.trim().split("@");
+                return m.length === 2 ? { units: m[0].trim(), price: m[1].trim() } : null;
+              }).filter(Boolean);
+            }
+            const fill = { units: String(r["Units"] ?? ""), price: String(r["Price"] ?? ""), fee: String(r["Platform fee"] ?? ""), at: String(r["Datetime"] || "") };
+            if (String(r["Type"]).toUpperCase() === "SELL") p.sells.push(fill); else p.buys.push(fill);
+          });
+          imported = [...map.values()];
+        } else if (rows.length && rows[0]["Entry price"] !== undefined) {
+          // old single-fill format (e.g. my-trades-import.xlsx) — each row becomes a position
+          imported = rows.filter((r) => String(r["Stock name"] || "").trim()).map((r, i) => this.migrateOld({
+            id: Date.now().toString(36) + "-" + i,
+            market: r["Market"] === "US" ? "US" : "MY",
+            name: String(r["Stock name"]), industry: String(r["Industry"] || ""),
+            units: r["Units"] === "" ? "" : String(r["Units"]),
+            entryPrice: r["Entry price"] === "" ? "" : String(r["Entry price"]),
+            buyFee: r["Platform fee (buy)"] === "" ? "" : String(r["Platform fee (buy)"]),
+            sellPrice: r["Selling price"] === "" ? null : String(r["Selling price"]),
+            sellFee: r["Platform fee (sell)"] === "" ? "" : String(r["Platform fee (sell)"]),
+            buyAt: String(r["Buy datetime"] || ""), sellAt: String(r["Sell datetime"] || ""),
+            reasonBuy: String(r["Reason to buy"] || ""), reasonSell: String(r["Reason to sell"] || ""),
+            remarks: String(r["Remarks"] || ""), sigMacd: false, sigSar: false, sigRsi: false, sigVol: false,
+          }));
+        }
+
+        if (imported.length) {
+          this.positions = imported; // import replaces the current log
+          const fresh = [...new Set(imported.map((p) => p.industry).filter((v) => v && !this.industries.includes(v)))];
+          if (fresh.length) { this.industries = this.industries.concat(fresh); this.persistInd(); }
+          await this.persist();
+        }
+      } catch (err) { this.saveError = true; }
+      e.target.value = "";
+      this.busy = null;
+    },
+  },
+}).mount("#app");
+</script>
+</body>
+</html>
