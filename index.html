@@ -24,13 +24,42 @@
   html,body{height:100%;overflow:hidden}
   body{margin:0;background:var(--bg);color:var(--text);
     font-family:'Segoe UI',system-ui,-apple-system,sans-serif}
-  /* full-height app: header stays fixed, table fills the rest and scrolls internally */
-  #app{height:100%;display:flex;flex-direction:column;padding:20px}
-  #app > .head, #app > .warn, #app > .info, #app > .empty{flex:0 0 auto}
+  /* full-height app: sidebar on the left, main column on the right.
+     Header stays fixed, table fills the rest and scrolls internally. */
+  #app{height:100%;display:flex;flex-direction:row}
+  .main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;padding:20px}
+  .main > .head, .main > .warn, .main > .info, .main > .empty{flex:0 0 auto}
 
-  .head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+  /* ---------- left sidebar ---------- */
+  .side{flex:0 0 225px;width:225px;background:var(--surface);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;gap:4px;padding:16px 12px;overflow-y:auto}
+  .brand{font-size:17px;font-weight:700;letter-spacing:-.02em;padding:4px 10px 14px;color:var(--text)}
+  .nav-item{display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;
+    background:none;border:none;border-radius:8px;padding:10px 12px;font-size:14px;color:var(--text)}
+  .nav-item:hover{background:rgba(47,111,237,.08)}
+  .nav-item.on{background:rgba(47,111,237,.14);color:var(--blue);font-weight:600}
+  .nav-sub{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;
+    padding:8px 12px 8px 28px;font-size:13px;color:var(--dim)}
+  .nav-sub:hover{background:rgba(47,111,237,.08);color:var(--text)}
+  .nav-sub.on{background:rgba(47,111,237,.14);color:var(--blue);font-weight:600}
+  .chev{display:inline-block;color:var(--dim);transition:transform .25s ease;font-size:12px}
+  .chev.open{transform:rotate(90deg)}
+  .side-sep{border-top:1px solid var(--border);margin:10px 4px}
+  .side-spacer{flex:1}
+  @media(max-width:760px){
+    #app{flex-direction:column}
+    .side{width:100%;flex:0 0 auto;flex-direction:row;flex-wrap:wrap;border-right:none;border-bottom:1px solid var(--border);padding:8px}
+    .brand{width:100%;padding:4px 10px}
+    .nav-item,.nav-sub{width:auto}
+    .nav-sub{padding-left:12px}
+    .side-sep,.side-spacer{display:none}
+  }
+
+  .head{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:2px;margin-bottom:16px;min-height:52px;justify-content:center}
   .head h1{margin:0;font-size:26px;font-weight:650;letter-spacing:-.02em}
   .sub{margin:2px 0 0;color:var(--dim);font-size:13px}
+  .head .head-acts{position:absolute;right:0;top:50%;transform:translateY(-50%)}
+  @media(max-width:760px){.head .head-acts{position:static;transform:none;margin-top:8px}}
   .head-acts{display:flex;gap:8px;flex-wrap:wrap}
   button{cursor:pointer;font-family:inherit}
   .btn{background:var(--surface);border:1px solid var(--border2);color:#3d4756;border-radius:8px;padding:9px 14px;font-size:13px}
@@ -186,6 +215,58 @@
   .pl-big.pl-loss{background:var(--loss-row);border-color:#e6cd82}
   .pl-big.pl-win .lbl,.pl-big.pl-loss .lbl{color:#333}
 
+  /* dashboard */
+  .dash{overflow-y:auto}
+  .dash-h{font-size:16px;margin:6px 0 10px;color:var(--text)}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:20px}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+  .stat-label{font-size:12px;color:var(--dim);margin-bottom:4px}
+  .stat-value{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}
+  .stat-sub{font-size:12px;color:var(--dim);margin-top:2px}
+
+  /* ============ DARK MODE — toggled via the sidebar button ============ */
+  [data-theme="dark"]{
+    --bg:#10151d; --surface:#1a212c; --surface2:#151b25;
+    --border:#262f3d; --border2:#2a3547;
+    --text:#dde3ec; --dim:#8b95a7;
+    --win:#4ade80; --loss:#facc15;
+    --win-row:rgba(52,199,120,.12); --loss-row:rgba(234,179,8,.12);
+  }
+  [data-theme="dark"] th{background:#1a212c}
+  [data-theme="dark"] td{border-top-color:#232c3a}
+  [data-theme="dark"] tbody td:first-child{box-shadow:2px 0 0 #232c3a}
+  [data-theme="dark"] thead th:first-child{box-shadow:2px 0 0 #232c3a}
+  [data-theme="dark"] .mhead td{background:#1d2635;color:#c3cbd9;border-top-color:#2b3648}
+  [data-theme="dark"] .mhead:hover td{background:#232e40}
+  [data-theme="dark"] .msum td{background:#182130}
+  [data-theme="dark"] .row-win:hover{background:rgba(52,199,120,.18)}
+  [data-theme="dark"] .row-loss:hover{background:rgba(234,179,8,.18)}
+  [data-theme="dark"] .row-open:hover{background:#1c2431}
+  [data-theme="dark"] input,[data-theme="dark"] select,[data-theme="dark"] textarea{background:#0f141d;color:var(--text);border-color:#2a3547}
+  [data-theme="dark"] .modal{background:#161d28}
+  [data-theme="dark"] .x{background:#0f141d;color:#aeb7c6}
+  [data-theme="dark"] .btn{color:#aeb7c6}
+  [data-theme="dark"] .checklist,[data-theme="dark"] .sect-summary,[data-theme="dark"] .rr .cell{background:#131a26;border-color:#262f3d}
+  [data-theme="dark"] .addfill,[data-theme="dark"] .fill-x{background:#131a26;border-color:#2a3547;color:#aeb7c6}
+  [data-theme="dark"] .sect-info{background:#151c28;border-color:#252f3f}
+  [data-theme="dark"] .sect-buy{background:#12203a;border-color:#274067}
+  [data-theme="dark"] .sect-sell{background:#2b2410;border-color:#57451a}
+  [data-theme="dark"] .sect-plan{background:#0f241c;border-color:#1f4a39}
+  [data-theme="dark"] .pl-big{background:#151c28;border-color:#252f3f}
+  [data-theme="dark"] .pl-big b{color:#fff}
+  [data-theme="dark"] .pl-big.pl-win{background:rgba(52,199,120,.15);border-color:#2b6b47}
+  [data-theme="dark"] .pl-big.pl-loss{background:rgba(234,179,8,.15);border-color:#7a6420}
+  [data-theme="dark"] .warn{background:#3a2d10;border-color:#8a6d1f;color:#e8c766}
+  [data-theme="dark"] .info{background:#14202f;border-color:#24405f;color:#8fb4de}
+  [data-theme="dark"] .busy-overlay{background:rgba(10,14,20,.7)}
+  [data-theme="dark"] .fills td{background:#151b25}
+  [data-theme="dark"] .fills th{background:#1a212c}
+  [data-theme="dark"] .empty{background:#1a212c;border-color:#33405a}
+  [data-theme="dark"] .tablewrap{scrollbar-color:#33405a #131923}
+  [data-theme="dark"] .tablewrap::-webkit-scrollbar-track{background:#131923}
+  [data-theme="dark"] .tablewrap::-webkit-scrollbar-thumb{background:#33405a;border-color:#131923}
+  [data-theme="dark"] .overlay{background:rgba(0,0,0,.6)}
+
   /* loading spinner */
   .busy-overlay{position:fixed;inset:0;background:rgba(255,255,255,.7);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:20}
   .spinner{width:44px;height:44px;border:4px solid #d6ddea;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
@@ -197,17 +278,36 @@
 
 <div id="app">
 
+  <!-- ---------- left sidebar ---------- -->
+  <aside class="side">
+    <div class="brand">Trade Log</div>
+    <button class="nav-item" :class="{ on: view === 'dashboard' }" @click="view = 'dashboard'">Dashboard</button>
+    <button class="nav-item" :class="{ on: view === 'log' }" @click="logOpen = !logOpen">
+      Trade log <span class="chev" :class="{ open: logOpen }">▸</span>
+    </button>
+    <template v-if="logOpen">
+      <button class="nav-sub" :class="{ on: view === 'log' && marketTab === 'MY' }" @click="view = 'log'; marketTab = 'MY'">Malaysia (MYR)</button>
+      <button class="nav-sub" :class="{ on: view === 'log' && marketTab === 'US' }" @click="view = 'log'; marketTab = 'US'">United States (USD)</button>
+    </template>
+    <div class="side-sep"></div>
+    <button class="nav-item" @click="$refs.file.click()">Import Excel</button>
+    <button class="nav-item" @click="exportXlsx">Export Excel</button>
+    <input ref="file" type="file" accept=".xlsx,.xls" style="display:none" @change="importXlsx" />
+    <div class="side-spacer"></div>
+    <button class="nav-item" @click="toggleTheme">{{ theme === 'dark' ? '☀ Light mode' : '🌙 Dark mode' }}</button>
+  </aside>
+
+  <!-- ---------- main column ---------- -->
+  <div class="main">
+
   <header class="head">
     <div>
-      <h1>This is my AMAZING Trade Log</h1>
-      <p class="sub">MY + US equities
+      <h1>Welcome to the Moon</h1>
+      <p class="sub">{{ view === 'dashboard' ? 'Dashboard' : (marketTab === 'MY' ? 'Malaysia (MYR)' : 'United States (USD)') }}
         <template v-if="user"> · <b>{{ user.email }}</b> · <span :class="sync === 'Sync failed' ? 'c-loss' : ''">{{ sync }}</span> · <a href="#" @click.prevent="signOut" style="color:var(--blue)">Sign out</a></template>
       </p>
     </div>
     <div class="head-acts">
-      <button class="btn" @click="$refs.file.click()">Import Excel</button>
-      <button class="btn" @click="exportXlsx">Export Excel</button>
-      <input ref="file" type="file" accept=".xlsx,.xls" style="display:none" @change="importXlsx" />
       <button class="primary" @click="openAdd">+ New position</button>
     </div>
   </header>
@@ -216,12 +316,27 @@
   <div v-if="!cloud && !hasStorage" class="info">Cloud database not reachable and no local storage: data lives in this browser tab only. Use <b>Export Excel</b> before closing, and <b>Import Excel</b> next time.</div>
   <div v-if="cloud && cloudSkip && !user" class="info">Working offline — changes are NOT saved to the cloud. <a href="#" @click.prevent="cloudSkip = false" style="color:var(--blue)">Sign in</a> to sync.</div>
 
-  <nav class="tabs">
-    <button :class="{ on: marketTab === 'MY' }" @click="marketTab = 'MY'">Malaysia (MYR)</button>
-    <button :class="{ on: marketTab === 'US' }" @click="marketTab = 'US'">United States (USD)</button>
-  </nav>
 
-  <div v-if="filtered.length === 0" class="empty">
+  <!-- ---------- dashboard view ---------- -->
+  <div v-if="view === 'dashboard'" class="dash">
+    <h2 class="dash-h">Malaysia (MYR)</h2>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Net P/L</div><div class="stat-value" :class="tone(dash.MY.pl)">{{ money(dash.MY.pl, 'MY') }}</div></div>
+      <div class="stat"><div class="stat-label">Win rate</div><div class="stat-value">{{ dash.MY.winRate === null ? '—' : dash.MY.winRate + '%' }}</div><div class="stat-sub">{{ dash.MY.wins }}W / {{ dash.MY.losses }}L</div></div>
+      <div class="stat"><div class="stat-label">Open / partial positions</div><div class="stat-value">{{ dash.MY.open }}</div></div>
+      <div class="stat"><div class="stat-label">Fees paid</div><div class="stat-value">{{ money(dash.MY.fees, 'MY') }}</div></div>
+    </div>
+    <h2 class="dash-h">United States (USD)</h2>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Net P/L</div><div class="stat-value" :class="tone(dash.US.pl)">{{ money(dash.US.pl, 'US') }}</div></div>
+      <div class="stat"><div class="stat-label">Win rate</div><div class="stat-value">{{ dash.US.winRate === null ? '—' : dash.US.winRate + '%' }}</div><div class="stat-sub">{{ dash.US.wins }}W / {{ dash.US.losses }}L</div></div>
+      <div class="stat"><div class="stat-label">Open / partial positions</div><div class="stat-value">{{ dash.US.open }}</div></div>
+      <div class="stat"><div class="stat-label">Fees paid</div><div class="stat-value">{{ money(dash.US.fees, 'US') }}</div></div>
+    </div>
+  </div>
+
+  <!-- ---------- trade log view ---------- -->
+  <div v-else-if="filtered.length === 0" class="empty">
     No {{ marketTab === 'MY' ? 'Malaysia' : 'US' }} positions yet. Press <b>New position</b> to log your first one, or <b>Import Excel</b> to load an existing log.
   </div>
 
@@ -499,6 +614,8 @@
     </div>
   </div>
 
+  </div><!-- /.main -->
+
   <!-- sign in (cloud database) -->
   <div v-if="cloud && !user && !cloudSkip" class="overlay">
     <div class="modal narrow">
@@ -564,7 +681,10 @@ createApp({
       editId: null, expanded: null, newInd: "",
       confirmDel: null,
       openMonths: {},
-      marketTab: "MY", // which market tab is showing
+      marketTab: "MY", // which market is showing in the trade log
+      view: "log",     // 'log' or 'dashboard'
+      logOpen: true,   // sidebar Trade log submenu expanded
+      theme: "light",  // 'light' or 'dark'
       form: EMPTY(),
     };
   },
@@ -603,6 +723,25 @@ createApp({
     },
 
     // positions of the active market tab
+    // dashboard stats across ALL positions, per market
+    dash() {
+      const mk = () => ({ pl: 0, fees: 0, wins: 0, losses: 0, open: 0, winRate: null });
+      const d = { MY: mk(), US: mk() };
+      this.positions.forEach((p) => {
+        const c = this.calc(p);
+        const s = d[(p.market || "MY") === "US" ? "US" : "MY"];
+        s.fees += c.buyFees + c.sellFees;
+        if (c.status !== "closed") { s.open++; return; }
+        s.pl += c.pl;
+        if (c.pl >= 0) s.wins++; else s.losses++;
+      });
+      ["MY", "US"].forEach((m) => {
+        const n = d[m].wins + d[m].losses;
+        d[m].winRate = n ? Math.round((d[m].wins / n) * 100) : null;
+      });
+      return d;
+    },
+
     filtered() {
       return this.positions.filter((p) => (p.market || "MY") === this.marketTab);
     },
@@ -630,6 +769,9 @@ createApp({
   },
 
   async mounted() {
+    try { const t = localStorage.getItem("theme"); if (t === "dark" || t === "light") this.theme = t; } catch (e) { /* default light */ }
+    this.applyTheme();
+
     if (this.hasStorage) {
       try {
         const r = await window.storage.get("positions-v1");
@@ -700,6 +842,16 @@ createApp({
         stop: "", targets: [],
         sigMacd: !!t.sigMacd, sigSar: !!t.sigSar, sigRsi: !!t.sigRsi, sigVol: !!t.sigVol,
       };
+    },
+
+    // ---------- theme ----------
+    applyTheme() {
+      document.documentElement.setAttribute("data-theme", this.theme);
+    },
+    toggleTheme() {
+      this.theme = this.theme === "dark" ? "light" : "dark";
+      this.applyTheme();
+      try { localStorage.setItem("theme", this.theme); } catch (e) { /* storage blocked — theme resets next visit */ }
     },
 
     // ---------- month expand / collapse ----------
