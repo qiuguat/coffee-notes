@@ -230,10 +230,21 @@
       <thead>
         <tr>
           <th>Stock</th><th class="r">Units</th>
-          <th class="r">Avg cost</th><th class="r">Platform fee (buy)</th><th class="r">Total buy cost</th>
-          <th class="r">Avg sell price</th><th class="r">Platform fee (sell)</th><th class="r">Total sell cost</th>
-          <th class="r">P/L</th><th class="r">P/L %</th><th>First buy</th><th>Last sell</th>
-          <th class="r">Days</th><th>Duration</th><th>Mkt</th><th>Industry</th><th></th>
+          <th class="r">Avg cost</th>
+          <th class="r">Platform fee (buy)</th>
+          <th class="r">Total buy cost</th>
+          <th class="r">Avg sell price</th>
+          <th class="r">Platform fee (sell)</th>
+          <th class="r">Total sell cost</th>
+          <th class="r">P/L</th>
+          <th class="r">P/L %</th>
+          <th>First buy</th>
+          <th>Last sell</th>
+          <th class="r">Days</th>
+          <th>Duration</th>
+          <th>Industry</th>
+          <th>
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -259,7 +270,6 @@
               <td class="dim">{{ dt(calc(p).lastSellAt) }}</td>
               <td class="r">{{ calc(p).days === null ? '—' : calc(p).days }}</td>
               <td class="dim">{{ calc(p).dur ? calc(p).dur.text : '—' }}</td>
-              <td>{{ p.market }}</td>
               <td class="dim ind-cell" :title="p.industry">{{ p.industry || '—' }}</td>
               <td class="acts" @click.stop>
                 <button class="icon i-edit" :title="calc(p).status === 'closed' ? 'Edit' : 'Add fills / edit'" @click="openEdit(p)">
