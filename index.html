@@ -32,7 +32,7 @@
 
   /* ---------- left sidebar ---------- */
   .side{flex:0 0 225px;width:225px;background:var(--surface);border-right:1px solid var(--border);
-    display:flex;flex-direction:column;gap:4px;padding:16px 12px;overflow-y:auto}
+    display:flex;flex-direction:column;gap:4px;padding:16px 12px;overflow:hidden}
   .brand{font-size:17px;font-weight:700;letter-spacing:-.02em;padding:4px 10px 14px;color:var(--text)}
   .nav-item{display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;
     background:none;border:none;border-radius:8px;padding:10px 12px;font-size:14px;color:var(--text)}
@@ -59,7 +59,12 @@
   .side.closed .side-top{justify-content:center}
   .side-toggle{width:30px;height:30px;flex:0 0 30px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--dim);font-size:14px;line-height:1}
   .side-toggle:hover{border-color:var(--blue);color:var(--blue)}
-  .side-body{display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;opacity:1;transition:opacity .2s ease}
+  .side-body{display:flex;flex-direction:column;gap:4px;flex:1;min-height:0;opacity:1;transition:opacity .2s ease;
+    overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#c3ccd9 transparent}
+  .side-body::-webkit-scrollbar{width:8px}
+  .side-body::-webkit-scrollbar-thumb{background:#c3ccd9;border-radius:4px}
+  [data-theme="dark"] .side-body{scrollbar-color:#33405a transparent}
+  [data-theme="dark"] .side-body::-webkit-scrollbar-thumb{background:#33405a}
   .side.closed .side-body{opacity:0;pointer-events:none;height:0;overflow:hidden}
   .side .brand{padding:4px 6px}
 
@@ -350,7 +355,7 @@
         <div class="cal-sum">
           <b>{{ calSummary.title }}</b><br>
           <template v-if="calSummary.has">
-            P/L after fees <b :class="tone(calSummary.pl)">{{ money(calSummary.pl, marketTab) }}</b> ·
+            P/L after fees <b :class="tone(calSummary.pl)">{{ money(calSummary.pl, marketTab) }}</b><br>
             Win rate {{ calSummary.winRate }}% ({{ calSummary.wins }}W / {{ calSummary.losses }}L)
           </template>
           <template v-else>No closed trades this month</template>
@@ -961,7 +966,7 @@ createApp({
       const key = this.calKey(i);
       this.calSel = key;
       this.view = "log";
-      this.openMonths[key] = true; // expand that month in the trade log too
+      this.openMonths = { [key]: true }; // open that month in the trade log, close all others
     },
 
     // ---------- theme ----------
