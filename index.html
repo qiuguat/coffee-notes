@@ -488,7 +488,7 @@
                   <div><span>Reason to buy</span>{{ p.reasonBuy || 'Not recorded' }}</div>
                   <div><span>Reason to sell</span>{{ p.reasonSell || (calc(p).status === 'closed' ? 'Not recorded' : 'Position still open') }}</div>
                   <div><span>Signals at entry</span>{{ signalText(p) || 'Not recorded' }}</div>
-                  <div><span>Profit &amp; cut loss plan</span>{{ planText(p) || 'Not set' }}</div>
+                  <div><span>Cut loss plan</span>{{ planText(p) || 'Not set' }}</div>
                   <div><span>Remarks</span>{{ p.remarks || '—' }}</div>
                 </div>
               </td>
@@ -573,17 +573,11 @@
           <div>Platform fees (buy)<b>{{ money(fc.buyFees, form.market) }}</b></div>
           <div>Total buy cost<b>{{ money(fc.totalBuyCost, form.market) }}</b></div>
         </div>
-        <label class="wide">Reason to buy<textarea rows="2" v-model="form.reasonBuy" placeholder="e.g. sector rotation, quarterly report catalyst"></textarea></label>
-      </div>
-
-      <!-- profit & cut loss plan (1:2R) -->
-      <div class="sect sect-plan">
-        <h3>Profit &amp; cut loss plan <em>(1:2R — based on your average cost above)</em></h3>
-        <div class="grid">
-          <label>Cut loss price<input type="number" step="0.0001" v-model="form.stop" placeholder="your stop loss" /></label>
+        <div class="grid" style="margin-top:10px">
+          <label>Cut loss price <em style="font-style:normal;color:var(--dim)">(1:2R targets show below)</em>
+            <input type="number" step="0.0001" v-model="form.stop" placeholder="your stop loss" /></label>
         </div>
         <p v-if="form.stop !== '' && fc.avgCost && num(form.stop) >= fc.avgCost" class="hintline" style="color:#b45309">⚠ Cut loss price should be below your average cost for a long trade.</p>
-
         <div class="rr" v-if="pc.valid">
           <div class="cell rk">Risk per unit (1R)<b>{{ priceN(pc.risk) }}</b></div>
           <div class="cell hl">1R target price<b>{{ priceN(pc.t1) }}</b></div>
@@ -591,20 +585,7 @@
           <div class="cell rk">Total risk if cut loss<b>{{ money(pc.totalRisk, form.market) }}</b></div>
           <div class="cell hl">Profit if all sold at 2R<b>{{ money(pc.totalReward, form.market) }}</b></div>
         </div>
-        <p v-else class="hintline">Enter your buy fills and a cut loss price — the 1R / 2R target prices will show here.</p>
-
-        <h3 style="margin-top:14px">分批卖出 plan <em>(optional — split your exit into batches)</em></h3>
-        <div v-for="(t, i) in form.targets" :key="'tg'+i" class="fill-row" style="grid-template-columns:1fr 1fr 1.4fr 34px">
-          <label>Units to sell<input type="number" v-model="t.units" placeholder="e.g. 5000" /></label>
-          <label>Target price<input type="number" step="0.0001" v-model="t.price" /></label>
-          <div class="auto">Est. profit vs avg cost<b :class="tgtProfit(t) !== null && tgtProfit(t) < 0 ? 'c-loss' : ''">{{ tgtProfit(t) === null ? '—' : money(tgtProfit(t), form.market) }}</b></div>
-          <button class="fill-x" title="Remove this target" @click="form.targets.splice(i,1)">✕</button>
-        </div>
-        <button class="addfill" @click="form.targets.push({ units: '', price: '' })">+ Add exit target</button>
-        <div class="sect-summary" v-if="planUnits">
-          <div>Planned units<b>{{ units(planUnits) }} / {{ units(fc.buyUnits || 0) }}</b></div>
-          <div>Planned profit (before fees)<b :class="planProfit < 0 ? 'c-loss' : ''">{{ money(planProfit, form.market) }}</b></div>
-        </div>
+        <label class="wide">Reason to buy<textarea rows="2" v-model="form.reasonBuy" placeholder="e.g. sector rotation, quarterly report catalyst"></textarea></label>
       </div>
 
       <!-- sell fills -->
@@ -731,7 +712,7 @@ const blankFill = () => ({ units: "", price: "", fee: "", at: "" });
 const EMPTY = () => ({
   market: "MY", name: "", industry: "",
   buys: [blankFill()], sells: [],
-  stop: "", targets: [],
+  stop: "",
   reasonBuy: "", reasonSell: "", remarks: "",
   sigMacd: false, sigSar: false, sigRsi: false, sigVol: false,
 });
@@ -788,15 +769,6 @@ createApp({
         totalRisk: risk * this.fc.buyUnits,
         totalReward: 2 * risk * this.fc.buyUnits,
       };
-    },
-    planUnits() {
-      return (this.form.targets || []).reduce((s, t) => s + this.num(t.units), 0);
-    },
-    planProfit() {
-      return (this.form.targets || []).reduce((s, t) => {
-        if (this.num(t.units) <= 0 || t.price === "") return s;
-        return s + this.num(t.units) * (this.num(t.price) - this.fc.avgCost);
-      }, 0);
     },
 
     // positions of the active market tab
@@ -920,18 +892,9 @@ createApp({
   methods: {
     blankFill,
 
-    // estimated profit of one planned exit target (before fees)
-    tgtProfit(t) {
-      if (this.num(t.units) <= 0 || t.price === "" || !this.fc.avgCost) return null;
-      return this.num(t.units) * (this.num(t.price) - this.fc.avgCost);
-    },
     planText(p) {
-      const bits = [];
-      if (p.stop !== "" && p.stop !== undefined && p.stop !== null && this.num(p.stop) > 0) bits.push("Cut loss @ " + this.priceN(this.num(p.stop)));
-      (p.targets || []).forEach((t) => {
-        if (this.num(t.units) > 0 && t.price !== "") bits.push(this.units(t.units) + " @ " + this.priceN(this.num(t.price)));
-      });
-      return bits.join(" · ");
+      if (p.stop !== "" && p.stop !== undefined && p.stop !== null && this.num(p.stop) > 0) return "Cut loss @ " + this.priceN(this.num(p.stop));
+      return "";
     },
 
     // convert an old single-fill trade record into a position
@@ -943,7 +906,7 @@ createApp({
         sells: (t.sellPrice !== "" && t.sellPrice !== undefined && t.sellPrice !== null)
           ? [{ units: t.units || "", price: t.sellPrice, fee: t.sellFee || "", at: t.sellAt || "" }] : [],
         reasonBuy: t.reasonBuy || "", reasonSell: t.reasonSell || "", remarks: t.remarks || "",
-        stop: "", targets: [],
+        stop: "",
         sigMacd: !!t.sigMacd, sigSar: !!t.sigSar, sigRsi: !!t.sigRsi, sigVol: !!t.sigVol,
       };
     },
@@ -1314,9 +1277,8 @@ createApp({
             "P/L": c.status === "closed" ? c.pl : "", "P/L %": c.status === "closed" && c.totalBuyCost ? (c.pl / c.totalBuyCost * 100) : "",
             "Status": c.status,
             "Cut loss price": p.stop !== "" && p.stop !== undefined ? this.num(p.stop) : "",
-            "Planned exits": (p.targets || []).filter((t) => this.num(t.units) > 0 && t.price !== "").map((t) => this.num(t.units) + "@" + this.num(t.price)).join("; "),
           } : { "Industry": "", "Signals": "", "Reason to buy": "", "Reason to sell": "", "Remarks": "",
-                "Avg cost": "", "Total buy cost": "", "Total sell cost": "", "P/L": "", "P/L %": "", "Status": "", "Cut loss price": "", "Planned exits": "" };
+                "Avg cost": "", "Total buy cost": "", "Total sell cost": "", "P/L": "", "P/L %": "", "Status": "", "Cut loss price": "" };
           let first = true;
           (p.buys || []).forEach((f) => {
             rows.push({ "Position ID": p.id, "Market": p.market, "Stock name": p.name, "Type": "BUY",
@@ -1372,12 +1334,6 @@ createApp({
             if (r["Remarks"]) p.remarks = String(r["Remarks"]);
             if (r["Signals"]) { p.sigMacd = sig(r["Signals"], "macd"); p.sigSar = sig(r["Signals"], "sar"); p.sigRsi = sig(r["Signals"], "rsi"); p.sigVol = sig(r["Signals"], "volume"); }
             if (r["Cut loss price"] !== "" && r["Cut loss price"] !== undefined) p.stop = String(r["Cut loss price"]);
-            if (r["Planned exits"]) {
-              p.targets = String(r["Planned exits"]).split(";").map((s) => {
-                const m = s.trim().split("@");
-                return m.length === 2 ? { units: m[0].trim(), price: m[1].trim() } : null;
-              }).filter(Boolean);
-            }
             const fill = { units: String(r["Units"] ?? ""), price: String(r["Price"] ?? ""), fee: String(r["Platform fee"] ?? ""), at: String(r["Datetime"] || "") };
             if (String(r["Type"]).toUpperCase() === "SELL") p.sells.push(fill); else p.buys.push(fill);
           });
