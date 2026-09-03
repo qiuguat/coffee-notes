@@ -274,6 +274,14 @@
   .mini-table td{position:static;box-shadow:none;padding:7px 10px;border-top:1px solid var(--border);background:transparent;font-variant-numeric:tabular-nums}
   .mini-table tbody tr{cursor:default;background:transparent}
   .score-note{font-size:11.5px;color:var(--dim)}
+  .stock-tools{display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap}
+  .mkt-pills{display:flex;gap:6px}
+  .mkt-pills button{background:var(--surface);border:1px solid var(--border2);color:var(--dim);border-radius:20px;padding:6px 16px;font-size:13px}
+  .mkt-pills button.on{background:rgba(47,111,237,.14);border-color:var(--blue);color:var(--blue);font-weight:600}
+  .mini-table tbody tr.clickable{cursor:pointer}
+  .mini-table tbody tr.clickable:hover{background:rgba(47,111,237,.06)}
+  .pager{display:flex;align-items:center;justify-content:center;gap:14px;font-size:13px;color:var(--dim);margin-bottom:20px}
+  .pager .btn:disabled{opacity:.4;cursor:default}
   [data-theme="dark"] .mini-table td{border-top-color:#232c3a}
   [data-theme="dark"] .mini-table th{border-bottom-color:#232c3a}
 
@@ -346,7 +354,15 @@
       <button class="side-toggle" @click="toggleSide" :title="sideOpen ? 'Collapse sidebar' : 'Expand sidebar'">{{ sideOpen ? '&laquo;' : '&raquo;' }}</button>
     </div>
     <div class="side-body">
-      <button class="nav-item" :class="{ on: view === 'dashboard' }" @click="view = 'dashboard'">Dashboard</button>
+      <button class="nav-item" :class="{ on: view === 'dashboard' }" @click="dashOpen = !dashOpen">
+        Dashboard <span class="chev" :class="{ open: dashOpen }">▸</span>
+      </button>
+      <div class="subwrap" :class="{ open: dashOpen }">
+        <div class="subinner">
+          <button class="nav-sub" :class="{ on: view === 'dashboard' && dashMarket === 'MY' }" @click="view = 'dashboard'; dashMarket = 'MY'">MY</button>
+          <button class="nav-sub" :class="{ on: view === 'dashboard' && dashMarket === 'US' }" @click="view = 'dashboard'; dashMarket = 'US'">US</button>
+        </div>
+      </div>
       <button class="nav-item" :class="{ on: view === 'log' }" @click="logOpen = !logOpen">
         Trade log <span class="chev" :class="{ open: logOpen }">▸</span>
       </button>
@@ -354,6 +370,15 @@
         <div class="subinner">
           <button class="nav-sub" :class="{ on: view === 'log' && marketTab === 'MY' }" @click="view = 'log'; marketTab = 'MY'">Malaysia (MYR)</button>
           <button class="nav-sub" :class="{ on: view === 'log' && marketTab === 'US' }" @click="view = 'log'; marketTab = 'US'">United States (USD)</button>
+        </div>
+      </div>
+      <button class="nav-item" :class="{ on: view === 'stock' }" @click="stockOpen = !stockOpen">
+        Stock <span class="chev" :class="{ open: stockOpen }">▸</span>
+      </button>
+      <div class="subwrap" :class="{ open: stockOpen }">
+        <div class="subinner">
+          <button class="nav-sub" :class="{ on: view === 'stock' && stockView === 'list' }" @click="view = 'stock'; stockView = 'list'">List</button>
+          <button class="nav-sub" :class="{ on: view === 'stock' && stockView === 'details' }" @click="view = 'stock'; stockView = 'details'">Details</button>
         </div>
       </div>
 
@@ -394,7 +419,7 @@
   <header class="head">
     <div>
       <h1>Welcome to the Moon</h1>
-      <p class="sub">{{ view === 'dashboard' ? 'Dashboard' : (marketTab === 'MY' ? 'Malaysia (MYR)' : 'United States (USD)') }}
+      <p class="sub">{{ headSub }}
         <template v-if="user"> · <b>{{ user.email }}</b> · <span :class="sync === 'Sync failed' ? 'c-loss' : ''">{{ sync }}</span> · <a href="#" @click.prevent="signOut" style="color:var(--blue)">Sign out</a></template>
       </p>
     </div>
@@ -408,14 +433,14 @@
   <div v-if="cloud && cloudSkip && !user" class="info">Working offline — changes are NOT saved to the cloud. <a href="#" @click.prevent="cloudSkip = false" style="color:var(--blue)">Sign in</a> to sync.</div>
 
 
-  <!-- ---------- dashboard view ---------- -->
+  <!-- ---------- dashboard view (per market) ---------- -->
   <div v-if="view === 'dashboard'" class="dash">
 
-    <h2 class="dash-h">Signals scorecard — do your entry rules actually work?</h2>
+    <h2 class="dash-h">Signals scorecard — do your entry rules actually work? ({{ dashMarket }})</h2>
     <table class="mini-table">
       <thead><tr><th>Entry condition</th><th class="r">Closed trades</th><th class="r">Win rate</th><th class="r">Avg P/L %</th></tr></thead>
       <tbody>
-        <tr v-for="row in sigScore" :key="row.label">
+        <tr v-for="row in sigScoreFor(dashMarket)" :key="row.label">
           <td>{{ row.label }}</td>
           <td class="r">{{ row.n }}</td>
           <td class="r">{{ row.n ? row.winRate + '%' : '—' }}</td>
@@ -423,83 +448,142 @@
         </tr>
       </tbody>
     </table>
-    <p class="dash-note">Counts trades in both markets. Avg P/L % uses each trade's return on total buy cost, so MYR and USD trades are comparable. Only trades logged with the checklist ticked are informative — keep ticking honestly.</p>
+    <p class="dash-note">Avg P/L % uses each trade's return on total buy cost. Only trades logged with the checklist ticked are informative — keep ticking honestly.</p>
 
-    <h2 class="dash-h">Malaysia (MYR)</h2>
+    <h2 class="dash-h">{{ dashMarket === 'MY' ? 'Malaysia (MYR)' : 'United States (USD)' }} overview</h2>
     <div class="stats">
-      <div class="stat"><div class="stat-label">Net P/L</div><div class="stat-value" :class="tone(dash.MY.pl)">{{ money(dash.MY.pl, 'MY') }}</div></div>
-      <div class="stat"><div class="stat-label">Win rate</div><div class="stat-value">{{ dash.MY.winRate === null ? '—' : dash.MY.winRate + '%' }}</div><div class="stat-sub">{{ dash.MY.wins }}W / {{ dash.MY.losses }}L</div></div>
-      <div class="stat"><div class="stat-label">Open / partial positions</div><div class="stat-value">{{ dash.MY.open }}</div></div>
-      <div class="stat"><div class="stat-label">Fees paid</div><div class="stat-value">{{ money(dash.MY.fees, 'MY') }}</div></div>
+      <div class="stat"><div class="stat-label">Net P/L</div><div class="stat-value" :class="tone(dash[dashMarket].pl)">{{ money(dash[dashMarket].pl, dashMarket) }}</div></div>
+      <div class="stat"><div class="stat-label">Win rate</div><div class="stat-value">{{ dash[dashMarket].winRate === null ? '—' : dash[dashMarket].winRate + '%' }}</div><div class="stat-sub">{{ dash[dashMarket].wins }}W / {{ dash[dashMarket].losses }}L</div></div>
+      <div class="stat"><div class="stat-label">Open / partial positions</div><div class="stat-value">{{ dash[dashMarket].open }}</div></div>
+      <div class="stat"><div class="stat-label">Fees paid</div><div class="stat-value">{{ money(dash[dashMarket].fees, dashMarket) }}</div></div>
     </div>
 
     <h3 class="dash-sub">Equity curve — cumulative P/L of closed positions</h3>
-    <div class="eq-wrap" v-if="dashEq.MY.has">
-      <svg class="eq" :viewBox="'0 0 ' + dashEq.MY.W + ' ' + dashEq.MY.H" preserveAspectRatio="none">
-        <line class="zero" x1="0" :x2="dashEq.MY.W" :y1="dashEq.MY.zeroY" :y2="dashEq.MY.zeroY" />
-        <path :d="dashEq.MY.path" />
-        <circle v-for="(pt, i) in dashEq.MY.pts" :key="i" :cx="pt.cx" :cy="pt.cy" r="2.5"><title>{{ pt.title }}</title></circle>
+    <div class="eq-wrap" v-if="dashEq[dashMarket].has">
+      <svg class="eq" :viewBox="'0 0 ' + dashEq[dashMarket].W + ' ' + dashEq[dashMarket].H" preserveAspectRatio="none">
+        <line class="zero" x1="0" :x2="dashEq[dashMarket].W" :y1="dashEq[dashMarket].zeroY" :y2="dashEq[dashMarket].zeroY" />
+        <path :d="dashEq[dashMarket].path" />
+        <circle v-for="(pt, i) in dashEq[dashMarket].pts" :key="i" :cx="pt.cx" :cy="pt.cy" r="2.5"><title>{{ pt.title }}</title></circle>
       </svg>
       <div class="eq-foot">
-        <span>{{ dashEq.MY.startLabel }} → {{ dashEq.MY.endLabel }} ({{ dashEq.MY.pts.length }} closed)</span>
-        <span>Now: <b :class="tone(dashEq.MY.final)">{{ money(dashEq.MY.final, 'MY') }}</b></span>
+        <span>{{ dashEq[dashMarket].startLabel }} → {{ dashEq[dashMarket].endLabel }} ({{ dashEq[dashMarket].pts.length }} closed)</span>
+        <span>Now: <b :class="tone(dashEq[dashMarket].final)">{{ money(dashEq[dashMarket].final, dashMarket) }}</b></span>
       </div>
     </div>
     <p v-else class="dash-note">No closed positions yet — the curve appears after your first close.</p>
+  </div>
 
-    <h3 class="dash-sub">Stock timing — when you usually buy and sell each stock</h3>
-    <table class="mini-table" v-if="dashTiming.MY.length">
+  <!-- ---------- stock: list ---------- -->
+  <div v-else-if="view === 'stock' && stockView === 'list'" class="dash">
+    <div class="stock-tools">
+      <div class="mkt-pills">
+        <button :class="{ on: stockMarket === 'MY' }" @click="stockMarket = 'MY'; stockPage = 1">MY</button>
+        <button :class="{ on: stockMarket === 'US' }" @click="stockMarket = 'US'; stockPage = 1">US</button>
+      </div>
+      <span class="dash-note" style="margin:0">Click a stock to open its details. Times are averages of your buy/sell clock times.</span>
+    </div>
+    <table class="mini-table" v-if="stockRows.length">
       <thead><tr><th>Stock</th><th class="r">Positions</th><th class="r">Avg buy time</th><th class="r">Avg sell time</th><th class="r">Avg held</th><th class="r">Net P/L</th></tr></thead>
       <tbody>
-        <tr v-for="row in dashTiming.MY" :key="row.name">
-          <td class="name">{{ row.name }}</td>
+        <tr v-for="row in stockPageRows" :key="row.name" class="clickable" @click="openStock(row.name)">
+          <td class="name" style="color:var(--blue)">{{ row.name }}</td>
           <td class="r">{{ row.n }}</td>
           <td class="r">{{ row.buyT || '—' }}</td>
           <td class="r">{{ row.sellT || '—' }}</td>
           <td class="r dim">{{ row.held || '—' }}</td>
-          <td class="r" :class="tone(row.pl)">{{ row.hasPl ? money(row.pl, 'MY') : '—' }}</td>
+          <td class="r" :class="tone(row.pl)">{{ row.hasPl ? money(row.pl, stockMarket) : '—' }}</td>
         </tr>
       </tbody>
     </table>
     <p v-else class="dash-note">No positions in this market yet.</p>
-
-    <h2 class="dash-h">United States (USD)</h2>
-    <div class="stats">
-      <div class="stat"><div class="stat-label">Net P/L</div><div class="stat-value" :class="tone(dash.US.pl)">{{ money(dash.US.pl, 'US') }}</div></div>
-      <div class="stat"><div class="stat-label">Win rate</div><div class="stat-value">{{ dash.US.winRate === null ? '—' : dash.US.winRate + '%' }}</div><div class="stat-sub">{{ dash.US.wins }}W / {{ dash.US.losses }}L</div></div>
-      <div class="stat"><div class="stat-label">Open / partial positions</div><div class="stat-value">{{ dash.US.open }}</div></div>
-      <div class="stat"><div class="stat-label">Fees paid</div><div class="stat-value">{{ money(dash.US.fees, 'US') }}</div></div>
+    <div class="pager" v-if="stockPages > 1">
+      <button class="btn" :disabled="stockPage <= 1" @click="stockPage--">‹ Prev</button>
+      <span>Page {{ stockPage }} of {{ stockPages }} · {{ stockRows.length }} stocks</span>
+      <button class="btn" :disabled="stockPage >= stockPages" @click="stockPage++">Next ›</button>
     </div>
+  </div>
 
-    <h3 class="dash-sub">Equity curve — cumulative P/L of closed positions</h3>
-    <div class="eq-wrap" v-if="dashEq.US.has">
-      <svg class="eq" :viewBox="'0 0 ' + dashEq.US.W + ' ' + dashEq.US.H" preserveAspectRatio="none">
-        <line class="zero" x1="0" :x2="dashEq.US.W" :y1="dashEq.US.zeroY" :y2="dashEq.US.zeroY" />
-        <path :d="dashEq.US.path" />
-        <circle v-for="(pt, i) in dashEq.US.pts" :key="i" :cx="pt.cx" :cy="pt.cy" r="2.5"><title>{{ pt.title }}</title></circle>
-      </svg>
-      <div class="eq-foot">
-        <span>{{ dashEq.US.startLabel }} → {{ dashEq.US.endLabel }} ({{ dashEq.US.pts.length }} closed)</span>
-        <span>Now: <b :class="tone(dashEq.US.final)">{{ money(dashEq.US.final, 'US') }}</b></span>
+  <!-- ---------- stock: details ---------- -->
+  <div v-else-if="view === 'stock' && stockView === 'details'" class="dash">
+    <p v-if="!stockSel" class="dash-note">Pick a stock from <a href="#" @click.prevent="stockView = 'list'" style="color:var(--blue)">the list</a> to see its details.</p>
+    <template v-else>
+      <h2 class="dash-h">{{ stockSel }} · {{ stockMarket === 'MY' ? 'Malaysia (MYR)' : 'United States (USD)' }}
+        <a href="#" @click.prevent="stockView = 'list'" style="color:var(--blue);font-size:13px;font-weight:400;margin-left:10px">← back to list</a></h2>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Positions</div><div class="stat-value">{{ stockAgg.n }}</div><div class="stat-sub">{{ stockAgg.openN }} open / partial</div></div>
+        <div class="stat"><div class="stat-label">Net P/L</div><div class="stat-value" :class="tone(stockAgg.pl)">{{ stockAgg.hasPl ? money(stockAgg.pl, stockMarket) : '—' }}</div></div>
+        <div class="stat"><div class="stat-label">Win rate</div><div class="stat-value">{{ stockAgg.winRate === null ? '—' : stockAgg.winRate + '%' }}</div><div class="stat-sub">{{ stockAgg.wins }}W / {{ stockAgg.losses }}L</div></div>
+        <div class="stat"><div class="stat-label">Avg buy / sell time</div><div class="stat-value" style="font-size:16px">{{ stockAgg.buyT || '—' }} / {{ stockAgg.sellT || '—' }}</div><div class="stat-sub">Avg held {{ stockAgg.held || '—' }}</div></div>
       </div>
-    </div>
-    <p v-else class="dash-note">No closed positions yet — the curve appears after your first close.</p>
 
-    <h3 class="dash-sub">Stock timing — when you usually buy and sell each stock</h3>
-    <table class="mini-table" v-if="dashTiming.US.length">
-      <thead><tr><th>Stock</th><th class="r">Positions</th><th class="r">Avg buy time</th><th class="r">Avg sell time</th><th class="r">Avg held</th><th class="r">Net P/L</th></tr></thead>
-      <tbody>
-        <tr v-for="row in dashTiming.US" :key="row.name">
-          <td class="name">{{ row.name }}</td>
-          <td class="r">{{ row.n }}</td>
-          <td class="r">{{ row.buyT || '—' }}</td>
-          <td class="r">{{ row.sellT || '—' }}</td>
-          <td class="r dim">{{ row.held || '—' }}</td>
-          <td class="r" :class="tone(row.pl)">{{ row.hasPl ? money(row.pl, 'US') : '—' }}</td>
-        </tr>
-      </tbody>
-    </table>
-    <p v-else class="dash-note">No positions in this market yet.</p>
+      <div class="tablewrap" style="flex:none;max-height:60vh" v-if="stockPositions.length">
+        <table>
+          <thead>
+            <tr>
+              <th>Stock</th><th class="r">Units</th>
+              <th class="r">Avg cost</th><th class="r">Platform fee (buy)</th><th class="r">Total buy cost</th>
+              <th class="r">Avg sell price</th><th class="r">Platform fee (sell)</th><th class="r">Total sell cost</th>
+              <th class="r">P/L</th><th class="r">P/L %</th><th>First buy</th><th>Last sell</th>
+              <th class="r">Days</th><th>Duration</th><th>Industry</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="p in stockPositions" :key="p.id">
+              <tr class="anim-row" :class="rowClass(p)" @click="expanded = expanded === p.id ? null : p.id">
+                <td class="name">{{ p.name || '—' }}<span v-if="calc(p).status === 'partial'" class="badge badge-partial">partial</span></td>
+                <td class="r">{{ unitsCell(p) }}</td>
+                <td class="r">{{ calc(p).buyUnits ? priceN(calc(p).avgCost) : '—' }}</td>
+                <td class="r dim">{{ money(calc(p).buyFees, p.market) }}</td>
+                <td class="r">{{ money(calc(p).totalBuyCost, p.market) }}</td>
+                <td class="r">{{ calc(p).sellUnits ? priceN(calc(p).avgSell) : '—' }}</td>
+                <td class="r dim">{{ calc(p).sellUnits ? money(calc(p).sellFees, p.market) : '—' }}</td>
+                <td class="r">{{ calc(p).sellUnits ? money(calc(p).totalSellCost, p.market) : '—' }}</td>
+                <td class="r pl" :class="plCellClass(p)">{{ plCell(p) }}</td>
+                <td class="r" :class="plCellClass(p)">{{ pctCell(p) }}</td>
+                <td class="dim">{{ dt(calc(p).firstBuyAt) }}</td>
+                <td class="dim">{{ dt(calc(p).lastSellAt) }}</td>
+                <td class="r">{{ calc(p).days === null ? '—' : calc(p).days }}</td>
+                <td class="dim">{{ calc(p).dur ? calc(p).dur.text : '—' }}</td>
+                <td class="dim ind-cell" :title="p.industry">{{ p.industry || '—' }}</td>
+                <td class="acts" @click.stop>
+                  <button class="icon i-edit" :title="calc(p).status === 'closed' ? 'Edit' : 'Add fills / edit'" @click="openEdit(p)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                  </button>
+                  <button class="icon i-del" title="Delete" @click="askDelete(p)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="expanded === p.id" class="xrow anim-row" :class="rowClass(p)">
+                <td colspan="16">
+                  <div class="fills">
+                    <table>
+                      <thead><tr><th>Fill</th><th class="r">Units</th><th class="r">Price</th><th class="r">Platform fee</th><th>Datetime</th></tr></thead>
+                      <tbody>
+                        <tr v-for="(f, i) in p.buys" :key="'b'+i">
+                          <td class="tb">BUY {{ i+1 }}</td><td class="r">{{ units(f.units) }}</td><td class="r">{{ priceN(num(f.price)) }}</td><td class="r">{{ money(num(f.fee), p.market) }}</td><td>{{ dt(f.at) }}</td>
+                        </tr>
+                        <tr v-for="(f, i) in p.sells" :key="'s'+i">
+                          <td class="ts">SELL {{ i+1 }}</td><td class="r">{{ units(f.units) }}</td><td class="r">{{ priceN(num(f.price)) }}</td><td class="r">{{ money(num(f.fee), p.market) }}</td><td>{{ dt(f.at) }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="reasons">
+                    <div><span>Reason to buy</span>{{ p.reasonBuy || 'Not recorded' }}</div>
+                    <div><span>Reason to sell</span>{{ p.reasonSell || (calc(p).status === 'closed' ? 'Not recorded' : 'Position still open') }}</div>
+                    <div><span>Signals at entry</span>{{ signalText(p) || 'Not recorded' }}</div>
+                    <div><span>Cut loss plan</span>{{ planText(p) || 'Not set' }}</div>
+                    <div><span>Remarks</span>{{ p.remarks || '—' }}</div>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="dash-note">No positions recorded for this stock in this market.</p>
+    </template>
   </div>
 
   <!-- ---------- trade log view ---------- -->
@@ -830,7 +914,14 @@ createApp({
       confirmDel: null,
       openMonths: {},
       marketTab: "MY", // which market is showing in the trade log
-      view: "log",     // 'log' or 'dashboard'
+      view: "log",       // 'log' | 'dashboard' | 'stock'
+      dashMarket: "MY",  // which market the dashboard shows
+      dashOpen: true,    // sidebar Dashboard submenu expanded
+      stockOpen: true,   // sidebar Stock submenu expanded
+      stockView: "list", // 'list' | 'details'
+      stockMarket: "MY", // market shown in the stock pages
+      stockSel: "",      // selected stock name for details
+      stockPage: 1,      // stock list pagination (50 per page)
       logOpen: true,   // sidebar Trade log submenu expanded
       sideOpen: true,  // sidebar expanded (<< / >>)
       theme: "light",  // 'light' or 'dark'
@@ -891,28 +982,40 @@ createApp({
       return { title, has: true, pl: s.pl, wins: s.wins, losses: s.losses, winRate: Math.round((s.wins / n) * 100) };
     },
 
-    // signals scorecard: win rate by how many core signals (MACD/SAR/RSI) were ticked at entry
-    sigScore() {
-      const mk = (label) => ({ label, n: 0, wins: 0, pctSum: 0 });
-      const b3 = mk("3/3 core signals"), b2 = mk("2/3 core signals"), b1 = mk("0–1/3 core signals");
-      const vy = mk("Volume confirmed (MAVOL)"), vn = mk("Volume not confirmed");
-      this.positions.forEach((p) => {
-        const c = this.calc(p);
-        if (c.status !== "closed" || !c.totalBuyCost) return;
-        const core = (p.sigMacd ? 1 : 0) + (p.sigSar ? 1 : 0) + (p.sigRsi ? 1 : 0);
-        const bucket = core === 3 ? b3 : core === 2 ? b2 : b1;
-        const vol = p.sigVol ? vy : vn;
-        [bucket, vol].forEach((s) => {
-          s.n++;
-          if (c.pl >= 0) s.wins++;
-          s.pctSum += (c.pl / c.totalBuyCost) * 100;
+    headSub() {
+      if (this.view === "dashboard") return "Dashboard · " + this.dashMarket;
+      if (this.view === "stock") return this.stockView === "details" && this.stockSel ? "Stock · " + this.stockSel : "Stock list · " + this.stockMarket;
+      return this.marketTab === "MY" ? "Malaysia (MYR)" : "United States (USD)";
+    },
+    stockRows() { return this.dashTiming[this.stockMarket]; },
+    stockPages() { return Math.max(1, Math.ceil(this.stockRows.length / 50)); },
+    stockPageRows() {
+      const page = Math.min(this.stockPage, this.stockPages);
+      return this.stockRows.slice((page - 1) * 50, page * 50);
+    },
+    stockPositions() {
+      if (!this.stockSel) return [];
+      const key = this.stockSel.toUpperCase();
+      return this.positions
+        .filter((p) => (p.market || "MY") === this.stockMarket && (p.name || "").toUpperCase() === key)
+        .sort((a, b) => {
+          const ta = this.calc(a).firstBuyAt, tb = this.calc(b).firstBuyAt;
+          return (tb ? new Date(tb).getTime() : 0) - (ta ? new Date(ta).getTime() : 0);
         });
+    },
+    stockAgg() {
+      const row = this.stockRows.find((r) => r.name.toUpperCase() === this.stockSel.toUpperCase()) || {};
+      let wins = 0, losses = 0, openN = 0;
+      this.stockPositions.forEach((p) => {
+        const c = this.calc(p);
+        if (c.status !== "closed") { openN++; return; }
+        if (c.pl >= 0) wins++; else losses++;
       });
-      return [b3, b2, b1, vy, vn].map((s) => ({
-        label: s.label, n: s.n,
-        winRate: s.n ? Math.round((s.wins / s.n) * 100) : null,
-        avgPct: s.n ? s.pctSum / s.n : 0,
-      }));
+      const n = wins + losses;
+      return { n: this.stockPositions.length, openN, wins, losses,
+               winRate: n ? Math.round((wins / n) * 100) : null,
+               pl: row.pl || 0, hasPl: !!row.hasPl,
+               buyT: row.buyT || "", sellT: row.sellT || "", held: row.held || "" };
     },
 
     // equity curve per market: cumulative P/L of closed positions, in close-date order
@@ -1098,6 +1201,37 @@ createApp({
         stop: "",
         sigMacd: !!t.sigMacd, sigSar: !!t.sigSar, sigRsi: !!t.sigRsi, sigVol: !!t.sigVol,
       };
+    },
+
+    // signals scorecard for one market: win rate by core signals (MACD/SAR/RSI) ticked at entry
+    sigScoreFor(market) {
+      const mk = (label) => ({ label, n: 0, wins: 0, pctSum: 0 });
+      const b3 = mk("3/3 core signals"), b2 = mk("2/3 core signals"), b1 = mk("0–1/3 core signals");
+      const vy = mk("Volume confirmed (MAVOL)"), vn = mk("Volume not confirmed");
+      this.positions.forEach((p) => {
+        if ((p.market || "MY") !== market) return;
+        const c = this.calc(p);
+        if (c.status !== "closed" || !c.totalBuyCost) return;
+        const core = (p.sigMacd ? 1 : 0) + (p.sigSar ? 1 : 0) + (p.sigRsi ? 1 : 0);
+        const bucket = core === 3 ? b3 : core === 2 ? b2 : b1;
+        const vol = p.sigVol ? vy : vn;
+        [bucket, vol].forEach((s) => {
+          s.n++;
+          if (c.pl >= 0) s.wins++;
+          s.pctSum += (c.pl / c.totalBuyCost) * 100;
+        });
+      });
+      return [b3, b2, b1, vy, vn].map((s) => ({
+        label: s.label, n: s.n,
+        winRate: s.n ? Math.round((s.wins / s.n) * 100) : null,
+        avgPct: s.n ? s.pctSum / s.n : 0,
+      }));
+    },
+    openStock(name) {
+      this.stockSel = name;
+      this.stockView = "details";
+      this.view = "stock";
+      this.expanded = null;
     },
 
     // ---------- sidebar + calendar ----------
