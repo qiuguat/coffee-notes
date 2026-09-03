@@ -260,6 +260,23 @@
   .stat-value{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}
   .stat-sub{font-size:12px;color:var(--dim);margin-top:2px}
 
+  .dash-sub{font-size:14px;color:var(--dim);margin:2px 0 8px;font-weight:600}
+  .dash-note{font-size:12px;color:var(--dim);margin:-4px 0 14px}
+  .eq-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:6px}
+  .eq{width:100%;height:170px;display:block}
+  .eq path{stroke:var(--blue);stroke-width:2;fill:none}
+  .eq .zero{stroke:var(--border2);stroke-dasharray:4 4;stroke-width:1}
+  .eq circle{fill:var(--blue)}
+  .eq-foot{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-top:6px}
+  .eq-foot b{font-variant-numeric:tabular-nums}
+  .mini-table{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px}
+  .mini-table th{background:transparent;position:static;box-shadow:none;padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px}
+  .mini-table td{position:static;box-shadow:none;padding:7px 10px;border-top:1px solid var(--border);background:transparent;font-variant-numeric:tabular-nums}
+  .mini-table tbody tr{cursor:default;background:transparent}
+  .score-note{font-size:11.5px;color:var(--dim)}
+  [data-theme="dark"] .mini-table td{border-top-color:#232c3a}
+  [data-theme="dark"] .mini-table th{border-bottom-color:#232c3a}
+
   /* ============ DARK MODE — toggled via the sidebar button ============ */
   [data-theme="dark"]{
     --bg:#10151d; --surface:#1a212c; --surface2:#151b25;
@@ -393,6 +410,21 @@
 
   <!-- ---------- dashboard view ---------- -->
   <div v-if="view === 'dashboard'" class="dash">
+
+    <h2 class="dash-h">Signals scorecard — do your entry rules actually work?</h2>
+    <table class="mini-table">
+      <thead><tr><th>Entry condition</th><th class="r">Closed trades</th><th class="r">Win rate</th><th class="r">Avg P/L %</th></tr></thead>
+      <tbody>
+        <tr v-for="row in sigScore" :key="row.label">
+          <td>{{ row.label }}</td>
+          <td class="r">{{ row.n }}</td>
+          <td class="r">{{ row.n ? row.winRate + '%' : '—' }}</td>
+          <td class="r" :class="row.n ? tone(row.avgPct) : ''">{{ row.n ? row.avgPct.toFixed(2) + '%' : '—' }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="dash-note">Counts trades in both markets. Avg P/L % uses each trade's return on total buy cost, so MYR and USD trades are comparable. Only trades logged with the checklist ticked are informative — keep ticking honestly.</p>
+
     <h2 class="dash-h">Malaysia (MYR)</h2>
     <div class="stats">
       <div class="stat"><div class="stat-label">Net P/L</div><div class="stat-value" :class="tone(dash.MY.pl)">{{ money(dash.MY.pl, 'MY') }}</div></div>
@@ -400,6 +432,37 @@
       <div class="stat"><div class="stat-label">Open / partial positions</div><div class="stat-value">{{ dash.MY.open }}</div></div>
       <div class="stat"><div class="stat-label">Fees paid</div><div class="stat-value">{{ money(dash.MY.fees, 'MY') }}</div></div>
     </div>
+
+    <h3 class="dash-sub">Equity curve — cumulative P/L of closed positions</h3>
+    <div class="eq-wrap" v-if="dashEq.MY.has">
+      <svg class="eq" :viewBox="'0 0 ' + dashEq.MY.W + ' ' + dashEq.MY.H" preserveAspectRatio="none">
+        <line class="zero" x1="0" :x2="dashEq.MY.W" :y1="dashEq.MY.zeroY" :y2="dashEq.MY.zeroY" />
+        <path :d="dashEq.MY.path" />
+        <circle v-for="(pt, i) in dashEq.MY.pts" :key="i" :cx="pt.cx" :cy="pt.cy" r="2.5"><title>{{ pt.title }}</title></circle>
+      </svg>
+      <div class="eq-foot">
+        <span>{{ dashEq.MY.startLabel }} → {{ dashEq.MY.endLabel }} ({{ dashEq.MY.pts.length }} closed)</span>
+        <span>Now: <b :class="tone(dashEq.MY.final)">{{ money(dashEq.MY.final, 'MY') }}</b></span>
+      </div>
+    </div>
+    <p v-else class="dash-note">No closed positions yet — the curve appears after your first close.</p>
+
+    <h3 class="dash-sub">Stock timing — when you usually buy and sell each stock</h3>
+    <table class="mini-table" v-if="dashTiming.MY.length">
+      <thead><tr><th>Stock</th><th class="r">Positions</th><th class="r">Avg buy time</th><th class="r">Avg sell time</th><th class="r">Avg held</th><th class="r">Net P/L</th></tr></thead>
+      <tbody>
+        <tr v-for="row in dashTiming.MY" :key="row.name">
+          <td class="name">{{ row.name }}</td>
+          <td class="r">{{ row.n }}</td>
+          <td class="r">{{ row.buyT || '—' }}</td>
+          <td class="r">{{ row.sellT || '—' }}</td>
+          <td class="r dim">{{ row.held || '—' }}</td>
+          <td class="r" :class="tone(row.pl)">{{ row.hasPl ? money(row.pl, 'MY') : '—' }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p v-else class="dash-note">No positions in this market yet.</p>
+
     <h2 class="dash-h">United States (USD)</h2>
     <div class="stats">
       <div class="stat"><div class="stat-label">Net P/L</div><div class="stat-value" :class="tone(dash.US.pl)">{{ money(dash.US.pl, 'US') }}</div></div>
@@ -407,6 +470,36 @@
       <div class="stat"><div class="stat-label">Open / partial positions</div><div class="stat-value">{{ dash.US.open }}</div></div>
       <div class="stat"><div class="stat-label">Fees paid</div><div class="stat-value">{{ money(dash.US.fees, 'US') }}</div></div>
     </div>
+
+    <h3 class="dash-sub">Equity curve — cumulative P/L of closed positions</h3>
+    <div class="eq-wrap" v-if="dashEq.US.has">
+      <svg class="eq" :viewBox="'0 0 ' + dashEq.US.W + ' ' + dashEq.US.H" preserveAspectRatio="none">
+        <line class="zero" x1="0" :x2="dashEq.US.W" :y1="dashEq.US.zeroY" :y2="dashEq.US.zeroY" />
+        <path :d="dashEq.US.path" />
+        <circle v-for="(pt, i) in dashEq.US.pts" :key="i" :cx="pt.cx" :cy="pt.cy" r="2.5"><title>{{ pt.title }}</title></circle>
+      </svg>
+      <div class="eq-foot">
+        <span>{{ dashEq.US.startLabel }} → {{ dashEq.US.endLabel }} ({{ dashEq.US.pts.length }} closed)</span>
+        <span>Now: <b :class="tone(dashEq.US.final)">{{ money(dashEq.US.final, 'US') }}</b></span>
+      </div>
+    </div>
+    <p v-else class="dash-note">No closed positions yet — the curve appears after your first close.</p>
+
+    <h3 class="dash-sub">Stock timing — when you usually buy and sell each stock</h3>
+    <table class="mini-table" v-if="dashTiming.US.length">
+      <thead><tr><th>Stock</th><th class="r">Positions</th><th class="r">Avg buy time</th><th class="r">Avg sell time</th><th class="r">Avg held</th><th class="r">Net P/L</th></tr></thead>
+      <tbody>
+        <tr v-for="row in dashTiming.US" :key="row.name">
+          <td class="name">{{ row.name }}</td>
+          <td class="r">{{ row.n }}</td>
+          <td class="r">{{ row.buyT || '—' }}</td>
+          <td class="r">{{ row.sellT || '—' }}</td>
+          <td class="r dim">{{ row.held || '—' }}</td>
+          <td class="r" :class="tone(row.pl)">{{ row.hasPl ? money(row.pl, 'US') : '—' }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p v-else class="dash-note">No positions in this market yet.</p>
   </div>
 
   <!-- ---------- trade log view ---------- -->
@@ -796,6 +889,102 @@ createApp({
       if (!s || s.wins + s.losses === 0) return { title, has: false };
       const n = s.wins + s.losses;
       return { title, has: true, pl: s.pl, wins: s.wins, losses: s.losses, winRate: Math.round((s.wins / n) * 100) };
+    },
+
+    // signals scorecard: win rate by how many core signals (MACD/SAR/RSI) were ticked at entry
+    sigScore() {
+      const mk = (label) => ({ label, n: 0, wins: 0, pctSum: 0 });
+      const b3 = mk("3/3 core signals"), b2 = mk("2/3 core signals"), b1 = mk("0–1/3 core signals");
+      const vy = mk("Volume confirmed (MAVOL)"), vn = mk("Volume not confirmed");
+      this.positions.forEach((p) => {
+        const c = this.calc(p);
+        if (c.status !== "closed" || !c.totalBuyCost) return;
+        const core = (p.sigMacd ? 1 : 0) + (p.sigSar ? 1 : 0) + (p.sigRsi ? 1 : 0);
+        const bucket = core === 3 ? b3 : core === 2 ? b2 : b1;
+        const vol = p.sigVol ? vy : vn;
+        [bucket, vol].forEach((s) => {
+          s.n++;
+          if (c.pl >= 0) s.wins++;
+          s.pctSum += (c.pl / c.totalBuyCost) * 100;
+        });
+      });
+      return [b3, b2, b1, vy, vn].map((s) => ({
+        label: s.label, n: s.n,
+        winRate: s.n ? Math.round((s.wins / s.n) * 100) : null,
+        avgPct: s.n ? s.pctSum / s.n : 0,
+      }));
+    },
+
+    // equity curve per market: cumulative P/L of closed positions, in close-date order
+    dashEq() {
+      const build = (m) => {
+        const rows = this.positions
+          .filter((p) => (p.market || "MY") === m)
+          .map((p) => ({ p, c: this.calc(p) }))
+          .filter((x) => x.c.status === "closed" && x.c.lastSellAt)
+          .sort((a, b) => new Date(a.c.lastSellAt) - new Date(b.c.lastSellAt));
+        if (!rows.length) return { has: false };
+        let cum = 0;
+        const raw = rows.map((x, i) => { cum += x.c.pl; return { i, cum, date: x.c.lastSellAt, name: x.p.name }; });
+        const W = 600, H = 170, padT = 10, padB = 8, padL = 6, padR = 6;
+        const lo = Math.min(0, ...raw.map((r) => r.cum));
+        const hi = Math.max(0, ...raw.map((r) => r.cum));
+        const span = (hi - lo) || 1;
+        const xf = (i) => raw.length === 1 ? W / 2 : padL + (W - padL - padR) * i / (raw.length - 1);
+        const yf = (v) => padT + (H - padT - padB) * (1 - (v - lo) / span);
+        const path = raw.map((r, i) => (i ? "L" : "M") + xf(r.i).toFixed(1) + " " + yf(r.cum).toFixed(1)).join(" ");
+        const dOnly = (s) => this.dt(s).split(" ")[0];
+        return {
+          has: true, W, H, path, zeroY: yf(0).toFixed(1),
+          pts: raw.map((r) => ({ cx: xf(r.i).toFixed(1), cy: yf(r.cum).toFixed(1), title: dOnly(r.date) + " " + r.name + " → " + this.money(r.cum, m) })),
+          final: raw[raw.length - 1].cum,
+          startLabel: dOnly(raw[0].date), endLabel: dOnly(raw[raw.length - 1].date),
+        };
+      };
+      return { MY: build("MY"), US: build("US") };
+    },
+
+    // per-stock timing: average clock time of buys and sells (midnight-only times from old
+    // date-only Excel rows are ignored so they don't drag the average to 00:00)
+    dashTiming() {
+      const build = (m) => {
+        const map = {};
+        this.positions.forEach((p) => {
+          if ((p.market || "MY") !== m || !p.name) return;
+          const key = p.name.toUpperCase();
+          if (!map[key]) map[key] = { name: p.name, n: 0, buyMins: [], sellMins: [], heldMs: [], pl: 0, hasPl: false };
+          const s = map[key];
+          s.n++;
+          const mins = (at) => {
+            if (!at) return null;
+            const d = new Date(at);
+            if (isNaN(d)) return null;
+            if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0) return null; // date-only rows
+            return d.getHours() * 60 + d.getMinutes();
+          };
+          (p.buys || []).forEach((f) => { const v = mins(f.at); if (v !== null) s.buyMins.push(v); });
+          (p.sells || []).forEach((f) => { const v = mins(f.at); if (v !== null) s.sellMins.push(v); });
+          const c = this.calc(p);
+          if (c.status === "closed") {
+            s.pl += c.pl; s.hasPl = true;
+            if (c.firstBuyAt && c.lastSellAt) {
+              const ms = new Date(c.lastSellAt) - new Date(c.firstBuyAt);
+              if (ms >= 0) s.heldMs.push(ms);
+            }
+          }
+        });
+        const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+        const tFmt = (v) => v === null ? "" : String(Math.floor(v / 60)).padStart(2, "0") + ":" + String(Math.round(v % 60)).padStart(2, "0");
+        const hFmt = (v) => {
+          if (v === null) return "";
+          const d = Math.floor(v / 86400000), h = Math.floor((v % 86400000) / 3600000), mi = Math.floor((v % 3600000) / 60000);
+          return d > 0 ? d + "d " + h + "h" : (h > 0 ? h + "h " + mi + "m" : mi + "m");
+        };
+        return Object.values(map)
+          .map((s) => ({ name: s.name, n: s.n, buyT: tFmt(avg(s.buyMins)), sellT: tFmt(avg(s.sellMins)), held: hFmt(avg(s.heldMs)), pl: s.pl, hasPl: s.hasPl }))
+          .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+      };
+      return { MY: build("MY"), US: build("US") };
     },
 
     // dashboard stats across ALL positions, per market
