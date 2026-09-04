@@ -51,6 +51,7 @@ createApp({
       stockSearch: "",   // stock list search box
       shotUrls: {},      // screenshot path -> temporary signed URL
       shotBusy: false,   // a screenshot upload is in progress
+      shotErr: "",       // last screenshot storage error, shown at the field
       logOpen: true,   // sidebar Trade log submenu expanded
       sideOpen: true,  // sidebar expanded (<< / >>)
       theme: "light",  // 'light' or 'dark'
@@ -370,9 +371,13 @@ createApp({
       const missing = shots.map((s) => s.path).filter((path) => !this.shotUrls[path]);
       if (!missing.length) return;
       try {
-        const { data } = await sb.storage.from("screenshots").createSignedUrls(missing, 86400);
-        (data || []).forEach((d) => { if (d.signedUrl) this.shotUrls[d.path] = d.signedUrl; });
-      } catch (e) { /* thumbnails just stay as placeholders */ }
+        const { data, error } = await sb.storage.from("screenshots").createSignedUrls(missing, 86400);
+        if (error) throw error;
+        (data || []).forEach((d) => {
+          if (d.signedUrl) this.shotUrls[d.path] = d.signedUrl;
+          else if (d.error) this.shotErr = "preview: " + d.error;
+        });
+      } catch (e) { this.shotErr = "preview: " + (e.message || e); }
     },
     viewShot(path) {
       const url = this.shotUrls[path];
@@ -401,6 +406,7 @@ createApp({
       e.target.value = "";
       if (!files.length || !sb || !this.user) return;
       this.shotBusy = true;
+      this.shotErr = "";
       if (!this.form.shots) this.form.shots = [];
       try {
         for (const file of files) {
@@ -411,7 +417,7 @@ createApp({
           this.form.shots.push({ path });
         }
         await this.loadShotUrls(this.form.shots);
-      } catch (err) { this.saveError = true; }
+      } catch (err) { this.shotErr = "upload: " + (err.message || err); }
       this.shotBusy = false;
     },
     async removeShot(i) {
@@ -731,6 +737,7 @@ createApp({
       if (!this.form.buys.length) this.form.buys = [blankFill()];
       this.editId = p.id;
       this.showForm = true;
+      if (this.form.shots && this.form.shots.length) this.loadShotUrls(this.form.shots); // load previews for saved screenshots
     },
     submitPosition() {
       const c = this.calc(this.form);
