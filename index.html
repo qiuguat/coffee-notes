@@ -88,7 +88,7 @@
 
   <header class="head">
     <div>
-      <h1>Welcome to the Moon</h1>
+      <h1>Welcome to the Moon 🚀🚀🚀</h1>
       <p class="sub">{{ headSub }}
         <template v-if="user"> · <b>{{ user.email }}</b> · <span :class="sync === 'Sync failed' ? 'c-loss' : ''">{{ sync }}</span> · <a href="#" @click.prevent="signOut" style="color:var(--blue)">Sign out</a></template>
       </p>
@@ -415,7 +415,7 @@
 
       <!-- buy fills -->
       <div class="sect sect-buy">
-        <h3>Buy <em>(press "+ Add buy" each time you buy in again — average cost updates automatically)</em></h3>
+        <h3>Buy <span class="tip-ico" title="Press &quot;+ Add buy&quot; each time you buy in again — average cost updates automatically.">?</span></h3>
         <div v-for="(f, i) in form.buys" :key="'fb'+i" class="fill-row">
           <label>Units<input type="number" v-model="f.units" placeholder="e.g. 5000" /></label>
           <label>Buy price (per unit)<input type="number" step="0.0001" v-model="f.price" /></label>
@@ -454,7 +454,7 @@
 
       <!-- sell fills -->
       <div class="sect sect-sell">
-        <h3>Sell <em>(leave empty while holding — press "+ Add sell" each time you sell some units)</em></h3>
+        <h3>Sell <span class="tip-ico" title="Leave empty while holding — press &quot;+ Add sell&quot; each time you sell some units.">?</span></h3>
         <div v-for="(f, i) in form.sells" :key="'fs'+i" class="fill-row">
           <label>Units<input type="number" v-model="f.units" placeholder="e.g. 5000" /></label>
           <label>Sell price (per unit)<input type="number" step="0.0001" v-model="f.price" /></label>
