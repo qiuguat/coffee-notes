@@ -999,8 +999,8 @@ textarea:focus {
     border: none;
     color: #fff;
     border-radius: 8px;
-    padding: 0 12px;
-    font-size: 12px;
+    padding: 12px 12px 12px;
+    font-size: 14px;
     font-weight: 600;
     white-space: nowrap
 }
