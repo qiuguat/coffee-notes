@@ -129,18 +129,20 @@
     <p v-else class="dash-note">No closed positions yet — the curve appears after your first close.</p>
 
     <h2 class="dash-h">Signals scorecard — do your entry rules actually work? ({{ dashMarket }})</h2>
-    <table class="mini-table">
-      <thead><tr><th>Entry condition</th><th class="r">Closed trades</th><th class="r">Win rate</th><th class="r">Avg P/L %</th></tr></thead>
-      <tbody>
-        <tr v-for="row in sigScoreFor(dashMarket)" :key="row.label">
-          <td>{{ row.label }}</td>
-          <td class="r">{{ row.n }}</td>
-          <td class="r">{{ row.n ? row.winRate + '%' : '—' }}</td>
-          <td class="r" :class="row.n ? tone(row.avgPct) : ''">{{ row.n ? row.avgPct.toFixed(2) + '%' : '—' }}</td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="dash-note">Avg P/L % uses each trade's return on total buy cost. Only trades logged with the checklist ticked are informative — keep ticking honestly.</p>
+    <div class="score">
+      <div class="score-row" v-for="row in sigScoreFor(dashMarket)" :key="row.label">
+        <div class="score-lab">{{ row.label }}<small>{{ row.n }} closed trade{{ row.n === 1 ? '' : 's' }}</small></div>
+        <div class="score-track">
+          <div class="score-50"></div>
+          <template v-if="row.n">
+            <div class="score-bar" :class="row.avgPct >= 0 ? 'win' : 'loss'" :style="{ width: row.winRate + '%' }"></div>
+            <span class="score-val">win {{ row.winRate }}% · avg {{ row.avgPct >= 0 ? '+' : '' }}{{ row.avgPct.toFixed(2) }}%</span>
+          </template>
+          <span v-else class="score-empty">no closed trades yet</span>
+        </div>
+      </div>
+      <div class="score-legend">Bar length = win rate (dashed line = 50%). Bar color = average P/L%: green means the condition makes money on average, yellow means it loses even if it wins often.</div>
+    </div>
 
   </div>
 
