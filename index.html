@@ -435,16 +435,17 @@
           <div>Total buy cost<b>{{ money(fc.totalBuyCost, form.market) }}</b></div>
         </div>
         <div class="grid" style="margin-top:10px">
-          <label>Cut loss price <em style="font-style:normal;color:var(--dim)">(1:2R targets show below)</em>
+          <label title="1R (risk per unit) = Average cost − Cut loss price. Targets: 1R target = avg cost + 1R, 2R target = avg cost + 2×1R. Hover each box below for its formula.">
+            <span class="lbl-row">Cut loss price <em>(1:2R targets show below — hover boxes for formulas)</em></span>
             <input type="number" step="0.0001" v-model="form.stop" placeholder="your stop loss" /></label>
         </div>
         <p v-if="form.stop !== '' && fc.avgCost && num(form.stop) >= fc.avgCost" class="hintline" style="color:#b45309">⚠ Cut loss price should be below your average cost for a long trade.</p>
         <div class="rr" v-if="pc.valid">
-          <div class="cell rk">Risk per unit (1R)<b>{{ priceN(pc.risk) }}</b></div>
-          <div class="cell hl">1R target price<b>{{ priceN(pc.t1) }}</b></div>
-          <div class="cell hl">2R target price<b>{{ priceN(pc.t2) }}</b></div>
-          <div class="cell rk">Total risk if cut loss<b>{{ money(pc.totalRisk, form.market) }}</b></div>
-          <div class="cell hl">Profit if all sold at 2R<b>{{ money(pc.totalReward, form.market) }}</b></div>
+          <div class="cell rk tip" :title="'1R = Average cost − Cut loss price\n= ' + priceN(fc.avgCost) + ' − ' + priceN(num(form.stop)) + ' = ' + priceN(pc.risk)">Risk per unit (1R)<b>{{ priceN(pc.risk) }}</b></div>
+          <div class="cell hl tip" :title="'1R target = Average cost + 1R\n= ' + priceN(fc.avgCost) + ' + ' + priceN(pc.risk) + ' = ' + priceN(pc.t1)">1R target price<b>{{ priceN(pc.t1) }}</b></div>
+          <div class="cell hl tip" :title="'2R target = Average cost + 2 × 1R\n= ' + priceN(fc.avgCost) + ' + 2 × ' + priceN(pc.risk) + ' = ' + priceN(pc.t2)">2R target price<b>{{ priceN(pc.t2) }}</b></div>
+          <div class="cell rk tip" :title="'Total risk = 1R × Total units (before fees)\n= ' + priceN(pc.risk) + ' × ' + units(fc.buyUnits) + ' = ' + money(pc.totalRisk, form.market)">Total risk if cut loss<b>{{ money(pc.totalRisk, form.market) }}</b></div>
+          <div class="cell hl tip" :title="'Profit at 2R = 2 × 1R × Total units (before fees)\n= 2 × ' + priceN(pc.risk) + ' × ' + units(fc.buyUnits) + ' = ' + money(pc.totalReward, form.market)">Profit if all sold at 2R<b>{{ money(pc.totalReward, form.market) }}</b></div>
         </div>
         <label class="wide">Reason to buy<textarea rows="2" v-model="form.reasonBuy" placeholder="e.g. sector rotation, quarterly report catalyst"></textarea></label>
       </div>
