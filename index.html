@@ -390,7 +390,7 @@
             </select>
           </label>
           <label>Stock name<input v-model="form.name" placeholder="e.g. CBHB" /></label>
-          <label>Industry
+          <label style="grid-column:1 / -1">Industry
             <div class="ind-row">
               <select v-model="form.industry">
                 <option value="">Select…</option>
@@ -492,7 +492,7 @@
 
       <!-- screenshots (stored in Supabase Storage, compressed before upload) -->
       <div class="shots-field">
-        <div class="shots-label">Screenshots <em v-if="!user">(sign in to attach screenshots)</em><em v-else-if="shotBusy">uploading…</em></div>
+        <div class="shots-label">Screenshots <em v-if="!user">(sign in to attach screenshots)</em><em v-else-if="shotBusy">uploading…</em><em v-else-if="shotErr" style="color:#dc2626">⚠ {{ shotErr }}</em></div>
         <div class="shots" v-if="(form.shots || []).length">
           <div v-for="(s, i) in form.shots" :key="s.path" class="shot">
             <img v-if="shotUrls[s.path]" :src="shotUrls[s.path]" @click="viewShot(s.path)" />
