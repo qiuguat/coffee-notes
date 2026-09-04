@@ -438,7 +438,7 @@
         </div>
         <div class="grid" style="margin-top:10px">
           <label title="1R (risk per unit) = Average cost − Cut loss price. Targets: 1R target = avg cost + 1R, 2R target = avg cost + 2×1R. Hover each box below for its formula.">
-            <span class="lbl-row">Cut loss price <em>(1:2R targets show below — hover boxes for formulas)</em></span>
+            <span class="lbl-row">Cut loss price (1:2R targets show below — hover boxes for formulas)</span>
             <input type="number" step="0.0001" v-model="form.stop" placeholder="your stop loss" /></label>
         </div>
         <p v-if="form.stop !== '' && fc.avgCost && num(form.stop) >= fc.avgCost" class="hintline" style="color:#b45309">⚠ Cut loss price should be below your average cost for a long trade.</p>
