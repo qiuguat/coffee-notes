@@ -999,8 +999,8 @@ textarea:focus {
     border: none;
     color: #fff;
     border-radius: 8px;
-    padding: 12px 12px 12px;
-    font-size: 14px;
+    padding: 0 12px;
+    font-size: 12px;
     font-weight: 600;
     white-space: nowrap
 }
@@ -1974,4 +1974,76 @@ textarea:focus {
 .tip-ico:hover {
     border-color: var(--blue);
     color: var(--blue)
+}
+
+
+/* buy/sell fill blocks — Excel-style 2x2 layout with full-width remove and add */
+.fill-block {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px
+}
+
+.fill-remove {
+    grid-column: 1 / -1;
+    width: 100%;
+    background: #dc2626;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer
+}
+
+.fill-remove:hover {
+    background: #e63b3b
+}
+
+.fill-remove:disabled {
+    opacity: .35;
+    cursor: default
+}
+
+.addfill-primary {
+    width: 100%;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer
+}
+
+.addfill-primary:hover {
+    background: #3d7bf0
+}
+
+/* summary strip — equal columns across the full width */
+.sect-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr))
+}
+
+/* dialog close cross — standard red like delete */
+.x {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #fff
+}
+
+.x:hover {
+    background: #e63b3b;
+    border-color: #e63b3b;
+    color: #fff
+}
+
+[data-theme="dark"] .x {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #fff
 }
