@@ -1416,6 +1416,7 @@ textarea:focus {
 
 .mini-table {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 15px;
     background: var(--surface);
@@ -1423,6 +1424,36 @@ textarea:focus {
     border-radius: 10px;
     overflow: hidden;
     margin-bottom: 20px
+}
+
+.mini-table th:nth-child(1),
+.mini-table td:nth-child(1) {
+    width: 24%
+}
+
+.mini-table th:nth-child(2),
+.mini-table td:nth-child(2) {
+    width: 12%
+}
+
+.mini-table th:nth-child(3),
+.mini-table td:nth-child(3) {
+    width: 16%
+}
+
+.mini-table th:nth-child(4),
+.mini-table td:nth-child(4) {
+    width: 16%
+}
+
+.mini-table th:nth-child(5),
+.mini-table td:nth-child(5) {
+    width: 15%
+}
+
+.mini-table th:nth-child(6),
+.mini-table td:nth-child(6) {
+    width: 17%
 }
 
 .mini-table th {
