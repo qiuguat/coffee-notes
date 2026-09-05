@@ -1428,7 +1428,7 @@ textarea:focus {
 
 .mini-table th:nth-child(1),
 .mini-table td:nth-child(1) {
-    width: 24%
+    width: 10%
 }
 
 .mini-table th:nth-child(2),
@@ -1453,7 +1453,7 @@ textarea:focus {
 
 .mini-table th:nth-child(6),
 .mini-table td:nth-child(6) {
-    width: 13%
+    width: 10%
 }
 
 .mini-table th {
