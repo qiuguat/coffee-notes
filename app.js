@@ -538,6 +538,30 @@ createApp({
       return parts.join(", ");
     },
 
+    // ---------- fee estimation (Moomoo MY only — verified against a real trade preview) ----------
+    // Same formula for buy and sell (confirmed identical by user).
+    // Bursa Malaysia charges, reverse-engineered + cross-checked against Moomoo's published rates:
+    //   commission  = 0.03% of trade value, rounded up to nearest cent
+    //   platform fee= flat RM3.00 per order
+    //   clearing fee= 0.03% of trade value, rounded up to nearest cent (capped RM1,000 — not enforced here, unlikely to matter at retail size)
+    //   stamp duty  = 0.1% of trade value, rounded UP to nearest RM1, min RM1 (capped RM1,000 — not enforced here)
+    //   SST         = observed as 0 on the one verified trade (ordinary MY shares' brokerage & clearing appear SST-exempt,
+    //                 and platform fee showed 0 SST too in that case). NOT independently confirmed beyond one data point —
+    //                 re-check this against a few more trade previews, especially if you ever trade MY ETFs/REITs/warrants,
+    //                 since those may be taxed differently.
+    // Only meaningful for market === "MY". Returns null if units/price aren't usable numbers yet.
+    estimateFee(units, price) {
+      const u = this.num(units), p = this.num(price);
+      if (!u || !p) return null;
+      const tradeValue = u * p;
+      const commission = Math.ceil(tradeValue * 0.0003 * 100) / 100;
+      const platformFee = 3.00;
+      const clearingFee = Math.ceil(tradeValue * 0.0003 * 100) / 100;
+      const stampDuty = Math.max(1, Math.ceil(tradeValue * 0.001));
+      const sst = 0; // see note above — unverified beyond one trade
+      return +(commission + platformFee + clearingFee + stampDuty + sst).toFixed(2);
+    },
+
     // ---------- position math — the heart of the app ----------
     // avg cost = pure weighted price (fees NOT inside the average, matching Moomoo display)
     // totals   = value + fees, matching your Excel
