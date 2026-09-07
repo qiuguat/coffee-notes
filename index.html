@@ -419,7 +419,12 @@
         <div v-for="(f, i) in form.buys" :key="'fb'+i" class="fill-block">
           <label>Units<input type="number" v-model="f.units" placeholder="e.g. 5000" /></label>
           <label>Buy price (per unit)<input type="number" step="0.0001" v-model="f.price" /></label>
-          <label>Platform fee<input type="number" step="0.01" v-model="f.fee" placeholder="Moomoo" /></label>
+          <label>Platform fee
+            <div class="dtwrap">
+              <input type="number" step="0.01" v-model="f.fee" placeholder="Moomoo" />
+              <button v-if="form.market==='MY'" type="button" class="nowbtn" title="Estimate commission + platform + clearing + stamp duty for this fill (MY only — check against Moomoo)" @click="f.fee = estimateFee(f.units, f.price)">Est.</button>
+            </div>
+          </label>
           <label>Buy datetime
             <div class="dtwrap">
               <input :value="dmy(f.at)" @change="f.at = parseDmy($event.target.value)" placeholder="dd/mm/yyyy hh:mm:ss" />
@@ -458,7 +463,12 @@
         <div v-for="(f, i) in form.sells" :key="'fs'+i" class="fill-block">
           <label>Units<input type="number" v-model="f.units" placeholder="e.g. 5000" /></label>
           <label>Sell price (per unit)<input type="number" step="0.0001" v-model="f.price" /></label>
-          <label>Platform fee<input type="number" step="0.01" v-model="f.fee" placeholder="Moomoo" /></label>
+          <label>Platform fee
+            <div class="dtwrap">
+              <input type="number" step="0.01" v-model="f.fee" placeholder="Moomoo" />
+              <button v-if="form.market==='MY'" type="button" class="nowbtn" title="Estimate commission + platform + clearing + stamp duty for this fill (MY only — check against Moomoo)" @click="f.fee = estimateFee(f.units, f.price)">Est.</button>
+            </div>
+          </label>
           <label>Sell datetime
             <div class="dtwrap">
               <input :value="dmy(f.at)" @change="f.at = parseDmy($event.target.value)" placeholder="dd/mm/yyyy hh:mm:ss" />
