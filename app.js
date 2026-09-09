@@ -15,7 +15,7 @@ const blankFill = () => ({ units: "", price: "", fee: "", at: "" });
 const EMPTY = () => ({
   market: "MY", name: "", industry: "",
   buys: [blankFill()], sells: [],
-  stop: "", shots: [],
+  stop: "", target: "", shots: [],
   reasonBuy: "", reasonSell: "", remarks: "",
   sigMacd: false, sigSar: false, sigRsi: false, sigVol: false,
 });
@@ -269,6 +269,16 @@ createApp({
     },
   },
 
+  watch: {
+    // auto-fill Target price with the 2R target as soon as it's computable —
+    // but only while the field is still blank, so a manually-typed target is never overwritten
+    'pc.t2'(nv) {
+      if (this.form.target === "" && this.pc.valid && nv) {
+        this.form.target = String(Math.round(nv * 10000) / 10000);
+      }
+    },
+  },
+
   async mounted() {
     try { const t = localStorage.getItem("theme"); if (t === "dark" || t === "light") this.theme = t; } catch (e) { /* default light */ }
     try { const s = localStorage.getItem("sideOpen"); if (s === "0") this.sideOpen = false; } catch (e) { /* default open */ }
@@ -332,7 +342,7 @@ createApp({
         sells: (t.sellPrice !== "" && t.sellPrice !== undefined && t.sellPrice !== null)
           ? [{ units: t.units || "", price: t.sellPrice, fee: t.sellFee || "", at: t.sellAt || "" }] : [],
         reasonBuy: t.reasonBuy || "", reasonSell: t.reasonSell || "", remarks: t.remarks || "",
-        stop: "", shots: [],
+        stop: "", target: "", shots: [],
         sigMacd: !!t.sigMacd, sigSar: !!t.sigSar, sigRsi: !!t.sigRsi, sigVol: !!t.sigVol,
       };
     },
