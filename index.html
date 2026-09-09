@@ -453,6 +453,7 @@
         <div class="rr" v-if="pc.valid">
           <div class="cell rk tip" :title="'1R = Average cost − Cut loss price\n= ' + priceN(fc.avgCost) + ' − ' + priceN(num(form.stop)) + ' = ' + priceN(pc.risk)">Risk per unit (1R)<b>{{ priceN(pc.risk) }}</b></div>
           <div class="cell hl tip" :title="'1R target = Average cost + 1R\n= ' + priceN(fc.avgCost) + ' + ' + priceN(pc.risk) + ' = ' + priceN(pc.t1)">1R target price<b>{{ priceN(pc.t1) }}</b></div>
+          <div class="cell hl tip" :title="'2R target = Average cost + 2 × 1R\n= ' + priceN(fc.avgCost) + ' + 2 × ' + priceN(pc.risk) + ' = ' + priceN(pc.t2)">2R target price<b>{{ priceN(pc.t2) }}</b></div>
         </div>
         <label class="wide">Reason to buy<textarea rows="2" v-model="form.reasonBuy" placeholder="e.g. sector rotation, quarterly report catalyst"></textarea></label>
       </div>
