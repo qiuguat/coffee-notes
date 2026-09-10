@@ -58,6 +58,7 @@ createApp({
       theme: "light",  // 'light' or 'dark'
       calYear: new Date().getFullYear(),
       calSel: new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, "0"),
+      fxUsdMyr: 4.07, // USD/MYR rate used only to estimate US-stock stamp duty (Malaysia govt charge, billed in USD equivalent) — check and update this before using "Est." since it drifts daily
       form: EMPTY(),
     };
   },
@@ -572,6 +573,46 @@ createApp({
       const stampDuty = Math.max(1, Math.ceil(tradeValue * 0.001));
       const sst = 0; // see note above — unverified beyond one trade
       return +(commission + platformFee + clearingFee + stampDuty + sst).toFixed(2);
+    },
+
+    // ---------- fee estimation (Moomoo MY client trading US stocks — verified against a real ASX trade preview, 10 units @ $45) ----------
+    // Source for the fixed-rate pieces: Moomoo MY's official US Market Fees page
+    // (moomoo.com/my/support/topic9_136), read Sept 2026 — re-check it periodically since
+    // Moomoo can change these without notice, and regulatory rates (SEC fee, TAF) change too.
+    //   commission   = 0.03% of trade value, rounded up to nearest cent (same formula as MY market)
+    //   platform fee = flat $0.99 per order
+    //   settlement   = $0.003 per share, capped at 1% of trade value
+    //   SEC fee      = 0.00206% of trade value, min $0.01/trade — SELL ONLY (verified: SEC Section 31 rate is
+    //                  $20.60 per $1,000,000 effective 4 Apr 2026, matches Moomoo's published $0.0000206 rate)
+    //   TAF          = $0.000195/share, min $0.01, max $9.79/trade — SELL ONLY (FINRA rate effective 1 Jan 2026)
+    //   CAT fee      = $0.000003/share (assumes NMS-listed stock; OTC-listed stocks are ~100x smaller
+    //                  at $0.00000003/share — this app has no way to tell the two apart, so OTC positions
+    //                  will show a very slightly high estimate here, usually rounding to the same cent)
+    //   stamp duty   = Malaysia govt charge: RM1 per RM1,000 (or part) of trade value, converted to MYR at
+    //                  today's USD/MYR rate, capped at RM1,000/trade for ordinary shares or RM200/trade for
+    //                  REITs, then converted back to USD. This is the one piece that depends on an exchange
+    //                  rate you have to keep current — update the "USD/MYR rate" field above before using
+    //                  Est. on a given day, or the stamp duty portion (usually a few cents) will drift.
+    //   ADR custodian fee ($0.01–$0.05/share on ADRs like this one) is NOT included — Moomoo didn't
+    //                  charge it on the verified trade, and the exact per-ADR rate isn't published, so
+    //                  don't trust this estimate blindly on ADR names; check the actual preview if one comes up.
+    // Only meaningful for market === "US". isSell selects the sell-only regulatory fees.
+    estimateFeeUS(units, price, isSell, industry) {
+      const u = this.num(units), p = this.num(price);
+      if (!u || !p) return null;
+      const tradeValue = u * p;
+      const commission = Math.ceil(tradeValue * 0.0003 * 100) / 100;
+      const platformFee = 0.99;
+      const settlementFee = Math.min(u * 0.003, tradeValue * 0.01);
+      const secFee = isSell ? Math.max(tradeValue * 0.0000206, 0.01) : 0;
+      const taf = isSell ? Math.min(Math.max(u * 0.000195, 0.01), 9.79) : 0;
+      const catFee = u * 0.000003;
+      const fx = this.num(this.fxUsdMyr) || 4.07;
+      const myrValue = tradeValue * fx;
+      const stampCapMyr = industry === "REIT" ? 200 : 1000;
+      const stampMyr = Math.min(Math.ceil(myrValue / 1000), stampCapMyr);
+      const stampDuty = stampMyr / fx;
+      return +(commission + platformFee + settlementFee + secFee + taf + catFee + stampDuty).toFixed(2);
     },
 
     // ---------- position math — the heart of the app ----------
