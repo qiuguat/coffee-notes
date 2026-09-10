@@ -94,12 +94,9 @@ createApp({
       this.positions.forEach((p) => {
         if ((p.market || "MY") !== this.marketTab) return;
         const c = this.calc(p);
-        if (!c.firstBuyAt) return;
-        const d = new Date(c.firstBuyAt);
-        if (isNaN(d)) return;
-        const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+        if (c.status !== "closed" || !c.firstBuyAt || !c.lastSellAt) return;
+        const key = this.plMonthKey(c);
         if (!map[key]) map[key] = { pl: 0, wins: 0, losses: 0 };
-        if (c.status !== "closed") return;
         map[key].pl += c.pl;
         if (c.pl >= 0) map[key].wins++; else map[key].losses++;
       });
@@ -454,6 +451,20 @@ createApp({
       try { localStorage.setItem("sideOpen", this.sideOpen ? "1" : "0"); } catch (e) { /* fine */ }
     },
     calKey(i) { return this.calYear + "-" + String(i + 1).padStart(2, "0"); },
+    // which month a CLOSED position's P/L gets attributed to for the calendar/monthly stats:
+    //  - buy and sell in the same calendar month → that month
+    //  - buy and sell in ADJACENT months → the 15th-of-the-sell-month cutoff decides:
+    //    sell lands on/after the 15th → the sell's month; before the 15th → the buy's month
+    //  - buy and sell more than 1 month apart → always the sell's own month, no cutoff
+    plMonthKey(c) {
+      const b = new Date(c.firstBuyAt), s = new Date(c.lastSellAt);
+      const ym = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+      const bKey = ym(b), sKey = ym(s);
+      const monthsApart = (s.getFullYear() * 12 + s.getMonth()) - (b.getFullYear() * 12 + b.getMonth());
+      if (monthsApart === 0) return sKey;
+      if (monthsApart === 1) return s.getDate() >= 15 ? sKey : bKey;
+      return sKey;
+    },
     calCellClass(i) {
       const key = this.calKey(i);
       const s = this.calMonths[key];
