@@ -660,7 +660,10 @@ createApp({
       });
       // once fully sold, runAvg reflects the last buy state rather than "remaining" units,
       // so fall back to the flat weighted average of all buys for a closed position's record
-      const movingAvgCost = runUnits > 0 ? runAvg : (buyUnits ? buyGross / buyUnits : 0);
+      // sells never touch runAvg, so it always holds the moving average cost effective at the
+      // moment of the most recent buy — which is exactly right whether the position is still
+      // open/partial, or has since been fully closed out (no fallback to a flat average needed)
+      const movingAvgCost = buyUnits ? runAvg : 0;
 
       // optional manual override, so you can key in exactly what Moomoo shows if rounding
       // at each step ever drifts a cent from the replay above
@@ -689,7 +692,12 @@ createApp({
         if (ms >= 0) { dur = this.durationMs(ms); days = dur.d; }
       }
 
-      return { buyUnits, buyGross, buyFees, sellUnits, sellGross, sellFees,
+      // actual current holding = everything ever bought minus everything ever sold — correct at
+      // every stage: buyUnits for an open position, the true remaining size mid-way through a
+      // partial position, and 0 once a position is fully closed (no exposure left, which is right)
+      const heldUnits = Math.max(buyUnits - sellUnits, 0);
+
+      return { buyUnits, buyGross, buyFees, sellUnits, sellGross, sellFees, heldUnits,
                avgCost, movingAvgCost, hasOverride, avgSell, totalBuyCost, totalSellCost, status, pl, realized,
                firstBuyAt, lastSellAt, dur, days };
     },
@@ -701,7 +709,11 @@ createApp({
     },
     unitsCell(p) {
       const c = this.calc(p);
-      if (c.status === "partial") return this.units(c.sellUnits) + " / " + this.units(c.buyUnits);
+      // closed: nothing left to hold, so show the total size of the trade for your own reference
+      if (c.status === "closed") return this.units(c.buyUnits || "");
+      // open/partial: show what you're ACTUALLY holding right now (bought minus sold),
+      // not just the raw total ever bought — that's the number that matches your real exposure
+      if (c.status === "partial") return this.units(c.heldUnits) + " held (" + this.units(c.buyUnits) + " total)";
       return this.units(c.buyUnits || "");
     },
     plCell(p) {
