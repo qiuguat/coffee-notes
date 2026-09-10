@@ -73,15 +73,18 @@ createApp({
 
     // 1:2R plan numbers, based on average cost and the cut loss price
     pc() {
-      const entry = this.fc.avgCost, stop = this.num(this.form.stop);
+      // risk is measured against what the units you still hold cost you, not against
+      // a lifetime average that includes buys you have already sold out of
+      const entry = this.fc.basisCost, stop = this.num(this.form.stop);
       const valid = this.form.stop !== "" && entry > 0 && stop > 0 && stop < entry;
       if (!valid) return { valid: false };
       const risk = entry - stop;
+      const units = this.fc.openUnits || this.fc.buyUnits;
       return {
         valid: true, risk,
         t1: entry + risk, t2: entry + 2 * risk,
-        totalRisk: risk * this.fc.buyUnits,
-        totalReward: 2 * risk * this.fc.buyUnits,
+        totalRisk: risk * units,
+        totalReward: 2 * risk * units,
       };
     },
 
@@ -610,18 +613,21 @@ createApp({
     calc(p) {
       const EPS = 1e-9;
       const FAR = 8.64e15 + 1; // past the end of the JS date range — used to park undated fills
-      const live = (f) => this.num(f.units) > 0 && f.price !== "" && f.price !== null && f.price !== undefined;
+      // quantity is a magnitude: a sell keyed as -5,000 means 5,000 units sold, not a
+      // row to be thrown away. Direction comes from which list the fill is in.
+      const qty = (f) => Math.abs(this.num(f.units));
+      const live = (f) => qty(f) > 0 && f.price !== "" && f.price !== null && f.price !== undefined;
       const buys = (p.buys || []).filter(live);
       const sells = (p.sells || []).filter(live);
 
-      const buyUnits = buys.reduce((s, f) => s + this.num(f.units), 0);
-      const buyGross = buys.reduce((s, f) => s + this.num(f.units) * this.num(f.price), 0);
+      const buyUnits = buys.reduce((s, f) => s + qty(f), 0);
+      const buyGross = buys.reduce((s, f) => s + qty(f) * this.num(f.price), 0);
       // only fills that are actually priced count their fee, so a half-typed row can't
       // quietly add cost (this used to read every buy row, including blank ones)
-      const buyFees = buys.reduce((s, f) => s + this.num(f.fee), 0);
-      const sellUnits = sells.reduce((s, f) => s + this.num(f.units), 0);
-      const sellGross = sells.reduce((s, f) => s + this.num(f.units) * this.num(f.price), 0);
-      const sellFees = sells.reduce((s, f) => s + this.num(f.fee), 0);
+      const buyFees = buys.reduce((s, f) => s + Math.abs(this.num(f.fee)), 0);
+      const sellUnits = sells.reduce((s, f) => s + qty(f), 0);
+      const sellGross = sells.reduce((s, f) => s + qty(f) * this.num(f.price), 0);
+      const sellFees = sells.reduce((s, f) => s + Math.abs(this.num(f.fee)), 0);
 
       const avgCost = buyUnits ? buyGross / buyUnits : 0;
       const avgSell = sellUnits ? sellGross / sellUnits : null;
@@ -644,45 +650,62 @@ createApp({
         return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
       };
 
-      // ----- replay: each sell eats the oldest lot still on hand -----
-      const lots = [];    // units still held: { left, price, feePerUnit, at, t, n }
-      const matches = []; // one row per (sell fill × buy lot) pairing
+      // ----- replay: a running average cost that each sale is measured against -----
+      // Every buy blends into the average; every sell takes its slice of the pot and
+      // leaves the average per unit untouched. This is the same running total your
+      // spreadsheet does, and the same basis Moomoo shows on the position.
+      const matches = []; // one row per sell fill
+      let onHand = 0;     // units held right now
+      let pot = 0;        // cost of those units, price only (fees excluded, Moomoo style)
+      let feePot = 0;     // buy fees attached to those units, still unallocated
+      let tSum = 0, tQty = 0; // weighted acquisition time of the units held, for "Held"
+      let lastBuyAt = null;
       let realized = 0, realizedCost = 0, realizedFees = 0, matchedUnits = 0;
       let oversoldUnits = 0, dayTradeUnits = 0, heldWeighted = 0, heldUnits = 0;
 
       events.forEach((e) => {
-        const u = this.num(e.f.units), px = this.num(e.f.price), fee = this.num(e.f.fee);
+        const u = qty(e.f), px = this.num(e.f.price), fee = Math.abs(this.num(e.f.fee));
         if (e.buy) {
-          lots.push({ left: u, price: px, feePerUnit: u ? fee / u : 0, at: e.f.at, t: e.t, n: e.n });
+          onHand += u; pot += u * px; feePot += fee;
+          if (e.t !== null) { tSum += u * e.t; tQty += u; }
+          lastBuyAt = e.f.at || lastBuyAt;
           return;
         }
-        let need = u;
-        const sellFeeUnit = u ? fee / u : 0;
-        while (need > EPS && lots.length) {
-          const lot = lots[0];
-          const take = Math.min(lot.left, need);
-          const cost = take * lot.price, buyFee = take * lot.feePerUnit;
-          const proceeds = take * px, sellFee = take * sellFeeUnit;
-          const slicePl = proceeds - sellFee - cost - buyFee;
-          const held = (lot.t !== null && e.t !== null && e.t >= lot.t) ? e.t - lot.t : null;
-          const day = isSameDay(lot.at, e.f.at);
-          matches.push({ units: take, buyN: lot.n, sellN: e.n,
-                         buyPrice: lot.price, sellPrice: px, buyAt: lot.at, sellAt: e.f.at,
-                         cost, proceeds, buyFee, sellFee, pl: slicePl, held, sameDay: day });
-          realized += slicePl; realizedCost += cost + buyFee; realizedFees += buyFee + sellFee;
-          matchedUnits += take;
-          if (day) dayTradeUnits += take;
-          if (held !== null) { heldWeighted += held * take; heldUnits += take; }
-          lot.left -= take; need -= take;
-          if (lot.left <= EPS) lots.shift();
-        }
-        // nothing left to match against — the fills disagree with each other
-        if (need > EPS) oversoldUnits += need;
+        // can't sell more than is on hand at this moment — the fills disagree
+        const take = Math.min(u, onHand);
+        if (u - take > EPS) oversoldUnits += u - take;
+        if (take <= EPS) return;
+
+        const avgHere = onHand > EPS ? pot / onHand : 0;
+        const share = take / onHand;
+        const cost = pot * share;              // cost basis leaving the pot
+        const buyFee = feePot * share;         // its share of the buy fees paid
+        const sellFee = fee * (take / u);      // only the part of the sell that matched
+        const proceeds = take * px;
+        const salePl = proceeds - sellFee - cost - buyFee;
+        const acq = tQty > EPS ? tSum / tQty : null;
+        const held = (acq !== null && e.t !== null && e.t >= acq) ? e.t - acq : null;
+        const day = isSameDay(lastBuyAt, e.f.at);
+
+        matches.push({ sellN: e.n, units: take, avgCost: avgHere, sellPrice: px,
+                       sellAt: e.f.at, cost, proceeds, buyFee, sellFee,
+                       pl: salePl, held, sameDay: day });
+
+        realized += salePl; realizedCost += cost + buyFee; realizedFees += buyFee + sellFee;
+        matchedUnits += take;
+        if (day) dayTradeUnits += take;
+        if (held !== null) { heldWeighted += held * take; heldUnits += take; }
+
+        // take the units out; the per-unit average of what remains is unchanged
+        pot -= cost; feePot -= buyFee;
+        tSum *= (1 - share); tQty *= (1 - share);
+        onHand -= take;
+        if (onHand <= EPS) { onHand = 0; pot = 0; feePot = 0; tSum = 0; tQty = 0; }
       });
 
-      const openUnits = lots.reduce((s, l) => s + l.left, 0);
-      const openCost = lots.reduce((s, l) => s + l.left * l.price, 0);
-      const openBuyFees = lots.reduce((s, l) => s + l.left * l.feePerUnit, 0);
+      const openUnits = onHand;
+      const openCost = pot;
+      const openBuyFees = feePot;
       const openAvgCost = openUnits > EPS ? openCost / openUnits : 0;
 
       const status = sellUnits <= 0 ? "open" : (openUnits > EPS ? "partial" : "closed");
@@ -705,8 +728,13 @@ createApp({
       const avgHeldMs = heldUnits > EPS ? heldWeighted / heldUnits : null;
       const avgHeld = avgHeldMs === null ? null : this.durationMs(avgHeldMs);
 
+      // the average that actually matters: what the units you still hold cost you.
+      // Once everything is sold there is no holding left, so fall back to the
+      // lifetime average of all buys.
+      const basisCost = openUnits > EPS ? openAvgCost : avgCost;
+
       return { buyUnits, buyGross, buyFees, sellUnits, sellGross, sellFees,
-               avgCost, avgSell, totalBuyCost, totalSellCost, status, pl,
+               avgCost, avgSell, basisCost, totalBuyCost, totalSellCost, status, pl,
                realized, realizedPct, realizedCost, realizedFees, matchedUnits, matches,
                openUnits, openCost, openBuyFees, openAvgCost,
                oversoldUnits, dayTradeUnits, avgHeld, avgHeldMs,
@@ -718,15 +746,22 @@ createApp({
       if (c.status !== "closed") return "row-open";
       return c.pl >= 0 ? "row-win" : "row-loss";
     },
+    // Units column: for a partly-sold position the number that matters is what's LEFT,
+    // so that leads and the sold/bought split sits underneath it.
     unitsCell(p) {
       const c = this.calc(p);
-      if (c.status === "partial") return this.units(c.sellUnits) + " / " + this.units(c.buyUnits);
+      if (c.status === "partial") return this.units(c.openUnits);
       return this.units(c.buyUnits || "");
     },
-    // "3,000 sold · 2,000 held" — the whole story of a partly-closed position in one line
-    holdCell(p) {
+    unitsSub(p) {
       const c = this.calc(p);
       if (c.status !== "partial") return "";
+      return this.units(c.sellUnits) + " sold of " + this.units(c.buyUnits);
+    },
+    // "2,000 still held @ 1.2700" — used in the expanded detail
+    holdCell(p) {
+      const c = this.calc(p);
+      if (c.openUnits <= 0) return "";
       return this.units(c.openUnits) + " still held @ " + this.priceN(c.openAvgCost);
     },
     plCell(p) {
