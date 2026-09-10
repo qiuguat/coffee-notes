@@ -586,7 +586,8 @@ button {
 }
 
 table {
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     width: 100%;
     min-width: 1650px;
     font-size: 14px
