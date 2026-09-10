@@ -97,6 +97,7 @@ createApp({
         if (isNaN(d)) return;
         const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
         if (!map[key]) map[key] = { pl: 0, wins: 0, losses: 0 };
+        if (c.status === "partial") { map[key].pl += c.realized; return; }
         if (c.status !== "closed") return;
         map[key].pl += c.pl;
         if (c.pl >= 0) map[key].wins++; else map[key].losses++;
@@ -107,9 +108,10 @@ createApp({
       const [y, m] = this.calSel.split("-");
       const title = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(m, 10) - 1] + " " + y;
       const s = this.calMonths[this.calSel];
-      if (!s || s.wins + s.losses === 0) return { title, has: false };
+      if (!s || (s.wins + s.losses === 0 && !s.pl)) return { title, has: false };
       const n = s.wins + s.losses;
-      return { title, has: true, pl: s.pl, wins: s.wins, losses: s.losses, winRate: Math.round((s.wins / n) * 100) };
+      return { title, has: true, pl: s.pl, wins: s.wins, losses: s.losses,
+               winRate: n ? Math.round((s.wins / n) * 100) : null };
     },
 
     headSub() {
@@ -155,14 +157,24 @@ createApp({
     // equity curve per market: cumulative P/L of closed positions, in close-date order
     dashEq() {
       const build = (m) => {
-        const rows = this.positions
-          .filter((p) => (p.market || "MY") === m)
-          .map((p) => ({ p, c: this.calc(p) }))
-          .filter((x) => x.c.status === "closed" && x.c.lastSellAt)
-          .sort((a, b) => new Date(a.c.lastSellAt) - new Date(b.c.lastSellAt));
+        // one point per sell fill, not per closed position — a partial exit is real money
+        // and belongs on the curve on the day it was taken
+        const byFill = {};
+        this.positions.forEach((p) => {
+          if ((p.market || "MY") !== m) return;
+          this.calc(p).matches.forEach((mt) => {
+            if (!mt.sellAt) return; // undated sale can't be placed on a time axis
+            const t = new Date(mt.sellAt).getTime();
+            if (isNaN(t)) return;
+            const key = p.id + "|" + mt.sellN;
+            if (!byFill[key]) byFill[key] = { t, date: mt.sellAt, pl: 0, name: p.name };
+            byFill[key].pl += mt.pl;
+          });
+        });
+        const rows = Object.values(byFill).sort((a, b) => a.t - b.t);
         if (!rows.length) return { has: false };
         let cum = 0;
-        const raw = rows.map((x, i) => { cum += x.c.pl; return { i, cum, date: x.c.lastSellAt, name: x.p.name }; });
+        const raw = rows.map((x, i) => { cum += x.pl; return { i, cum, date: x.date, name: x.name }; });
         const W = 600, H = 170, padT = 10, padB = 8, padL = 6, padR = 6;
         const lo = Math.min(0, ...raw.map((r) => r.cum));
         const hi = Math.max(0, ...raw.map((r) => r.cum));
@@ -202,12 +214,12 @@ createApp({
           (p.buys || []).forEach((f) => { const v = mins(f.at); if (v !== null) s.buyMins.push(v); });
           (p.sells || []).forEach((f) => { const v = mins(f.at); if (v !== null) s.sellMins.push(v); });
           const c = this.calc(p);
-          if (c.status === "closed") {
-            s.pl += c.pl; s.hasPl = true;
-            if (c.firstBuyAt && c.lastSellAt) {
-              const ms = new Date(c.lastSellAt) - new Date(c.firstBuyAt);
-              if (ms >= 0) s.heldMs.push(ms);
-            }
+          // any position with units actually sold contributes, partial or fully closed
+          if (c.matchedUnits > 0) {
+            s.pl += c.realized; s.hasPl = true;
+            // unit-weighted hold time across the matched lots, so multi-fill positions
+            // aren't reported as first-buy-to-last-sell
+            if (c.avgHeldMs !== null) s.heldMs.push(c.avgHeldMs);
           }
         });
         const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
@@ -226,19 +238,26 @@ createApp({
 
     // dashboard stats across ALL positions, per market
     dash() {
-      const mk = () => ({ pl: 0, fees: 0, wins: 0, losses: 0, open: 0, winRate: null });
+      const mk = () => ({ pl: 0, openPl: 0, total: 0, fees: 0, wins: 0, losses: 0,
+                          open: 0, partial: 0, tied: 0, winRate: null });
       const d = { MY: mk(), US: mk() };
       this.positions.forEach((p) => {
         const c = this.calc(p);
         const s = d[(p.market || "MY") === "US" ? "US" : "MY"];
         s.fees += c.buyFees + c.sellFees;
-        if (c.status !== "closed") { s.open++; return; }
-        s.pl += c.pl;
-        if (c.pl >= 0) s.wins++; else s.losses++;
+        if (c.status === "closed") {
+          s.pl += c.pl;
+          if (c.pl >= 0) s.wins++; else s.losses++;
+          return;
+        }
+        s.open++;
+        s.tied += c.openCost + c.openBuyFees; // capital still sitting in the market
+        if (c.status === "partial") { s.partial++; s.openPl += c.realized; }
       });
       ["MY", "US"].forEach((m) => {
         const n = d[m].wins + d[m].losses;
         d[m].winRate = n ? Math.round((d[m].wins / n) * 100) : null;
+        d[m].total = d[m].pl + d[m].openPl;
       });
       return d;
     },
@@ -355,14 +374,16 @@ createApp({
       this.positions.forEach((p) => {
         if ((p.market || "MY") !== market) return;
         const c = this.calc(p);
-        if (c.status !== "closed" || !c.totalBuyCost) return;
+        // judge the entry on whatever has actually been sold — waiting for a full close
+        // threw away every partly-taken trade
+        if (c.realizedPct === null) return;
         const core = (p.sigMacd ? 1 : 0) + (p.sigSar ? 1 : 0) + (p.sigRsi ? 1 : 0);
         const bucket = core === 3 ? b3 : core === 2 ? b2 : b1;
         const vol = p.sigVol ? vy : vn;
         [bucket, vol].forEach((s) => {
           s.n++;
-          if (c.pl >= 0) s.wins++;
-          s.pctSum += (c.pl / c.totalBuyCost) * 100;
+          if (c.realized >= 0) s.wins++;
+          s.pctSum += c.realizedPct;
         });
       });
       return [b3, b2, b1, vy, vn].map((s) => ({
@@ -573,16 +594,31 @@ createApp({
     },
 
     // ---------- position math — the heart of the app ----------
-    // avg cost = pure weighted price (fees NOT inside the average, matching Moomoo display)
-    // totals   = value + fees, matching your Excel
+    // Buys and sells are replayed as ONE timeline, and every sell is matched against the
+    // buy lots that were actually on hand at that moment, oldest lot first (FIFO).
+    // That ordering is what makes same-day trading come out right: with a plain lifetime
+    // average, a buy made in the afternoon retroactively changes the cost of a sale made
+    // that morning. Matching in time order means a later buy can never touch an earlier sale.
+    //
+    // Each matched slice carries its share of BOTH fees, so the realized number on a
+    // half-sold position is measured the same way as the final number on a closed one —
+    // no jump when the last units go out.
+    //
+    // avgCost     = weighted price of all buys (fees NOT inside it, matching Moomoo's display)
+    // openAvgCost = weighted price of the units still held
+    // realized    = proceeds − sell fee − cost of matched units − their share of the buy fee
     calc(p) {
+      const EPS = 1e-9;
+      const FAR = 8.64e15 + 1; // past the end of the JS date range — used to park undated fills
       const live = (f) => this.num(f.units) > 0 && f.price !== "" && f.price !== null && f.price !== undefined;
       const buys = (p.buys || []).filter(live);
       const sells = (p.sells || []).filter(live);
 
       const buyUnits = buys.reduce((s, f) => s + this.num(f.units), 0);
       const buyGross = buys.reduce((s, f) => s + this.num(f.units) * this.num(f.price), 0);
-      const buyFees = (p.buys || []).reduce((s, f) => s + this.num(f.fee), 0);
+      // only fills that are actually priced count their fee, so a half-typed row can't
+      // quietly add cost (this used to read every buy row, including blank ones)
+      const buyFees = buys.reduce((s, f) => s + this.num(f.fee), 0);
       const sellUnits = sells.reduce((s, f) => s + this.num(f.units), 0);
       const sellGross = sells.reduce((s, f) => s + this.num(f.units) * this.num(f.price), 0);
       const sellFees = sells.reduce((s, f) => s + this.num(f.fee), 0);
@@ -592,24 +628,88 @@ createApp({
       const totalBuyCost = buyGross + buyFees;
       const totalSellCost = sellUnits ? sellGross + sellFees : null;
 
-      const status = sellUnits <= 0 ? "open" : (sellUnits >= buyUnits ? "closed" : "partial");
-      // full position P/L: everything received minus everything paid (all fees included)
-      const pl = status === "closed" ? sellGross - sellFees - totalBuyCost : null;
-      // realized P/L while partially sold: sold units measured against average cost
-      const realized = status === "partial" ? sellGross - sellFees - sellUnits * avgCost : null;
+      // ----- one timeline of fills -----
+      const ms = (at) => { if (!at) return null; const d = new Date(at); return isNaN(d) ? null : d.getTime(); };
+      const events = [];
+      // an undated buy is assumed to be first and an undated sell last, so a missing
+      // datetime can never make it look like you sold stock you never held
+      buys.forEach((f, i) => { const t = ms(f.at); events.push({ buy: true, f, n: i + 1, t, k: t === null ? -FAR : t }); });
+      sells.forEach((f, i) => { const t = ms(f.at); events.push({ buy: false, f, n: i + 1, t, k: t === null ? FAR : t }); });
+      // same timestamp: the buy settles first (that is the day-trade case), then list order
+      events.sort((a, b) => a.k - b.k || (a.buy === b.buy ? a.n - b.n : (a.buy ? -1 : 1)));
 
-      const buyTimes = buys.map((f) => new Date(f.at).getTime()).filter((t) => !isNaN(t));
-      const sellTimes = sells.map((f) => new Date(f.at).getTime()).filter((t) => !isNaN(t));
+      const isSameDay = (a, b) => {
+        const da = a ? new Date(a) : null, db = b ? new Date(b) : null;
+        if (!da || !db || isNaN(da) || isNaN(db)) return false;
+        return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+      };
+
+      // ----- replay: each sell eats the oldest lot still on hand -----
+      const lots = [];    // units still held: { left, price, feePerUnit, at, t, n }
+      const matches = []; // one row per (sell fill × buy lot) pairing
+      let realized = 0, realizedCost = 0, realizedFees = 0, matchedUnits = 0;
+      let oversoldUnits = 0, dayTradeUnits = 0, heldWeighted = 0, heldUnits = 0;
+
+      events.forEach((e) => {
+        const u = this.num(e.f.units), px = this.num(e.f.price), fee = this.num(e.f.fee);
+        if (e.buy) {
+          lots.push({ left: u, price: px, feePerUnit: u ? fee / u : 0, at: e.f.at, t: e.t, n: e.n });
+          return;
+        }
+        let need = u;
+        const sellFeeUnit = u ? fee / u : 0;
+        while (need > EPS && lots.length) {
+          const lot = lots[0];
+          const take = Math.min(lot.left, need);
+          const cost = take * lot.price, buyFee = take * lot.feePerUnit;
+          const proceeds = take * px, sellFee = take * sellFeeUnit;
+          const slicePl = proceeds - sellFee - cost - buyFee;
+          const held = (lot.t !== null && e.t !== null && e.t >= lot.t) ? e.t - lot.t : null;
+          const day = isSameDay(lot.at, e.f.at);
+          matches.push({ units: take, buyN: lot.n, sellN: e.n,
+                         buyPrice: lot.price, sellPrice: px, buyAt: lot.at, sellAt: e.f.at,
+                         cost, proceeds, buyFee, sellFee, pl: slicePl, held, sameDay: day });
+          realized += slicePl; realizedCost += cost + buyFee; realizedFees += buyFee + sellFee;
+          matchedUnits += take;
+          if (day) dayTradeUnits += take;
+          if (held !== null) { heldWeighted += held * take; heldUnits += take; }
+          lot.left -= take; need -= take;
+          if (lot.left <= EPS) lots.shift();
+        }
+        // nothing left to match against — the fills disagree with each other
+        if (need > EPS) oversoldUnits += need;
+      });
+
+      const openUnits = lots.reduce((s, l) => s + l.left, 0);
+      const openCost = lots.reduce((s, l) => s + l.left * l.price, 0);
+      const openBuyFees = lots.reduce((s, l) => s + l.left * l.feePerUnit, 0);
+      const openAvgCost = openUnits > EPS ? openCost / openUnits : 0;
+
+      const status = sellUnits <= 0 ? "open" : (openUnits > EPS ? "partial" : "closed");
+      // once everything is sold this is arithmetically identical to the old
+      // sellGross − sellFees − totalBuyCost, so closed positions keep their numbers
+      const pl = status === "closed" ? realized : null;
+      const realizedPct = realizedCost > EPS ? (realized / realizedCost) * 100 : null;
+
+      const buyTimes = buys.map((f) => ms(f.at)).filter((t) => t !== null);
+      const sellTimes = sells.map((f) => ms(f.at)).filter((t) => t !== null);
       const firstBuyAt = buyTimes.length ? new Date(Math.min(...buyTimes)).toISOString() : null;
       const lastSellAt = sellTimes.length ? new Date(Math.max(...sellTimes)).toISOString() : null;
       let dur = null, days = null;
       if (status === "closed" && firstBuyAt && lastSellAt) {
-        const ms = new Date(lastSellAt) - new Date(firstBuyAt);
-        if (ms >= 0) { dur = this.durationMs(ms); days = dur.d; }
+        const span = new Date(lastSellAt) - new Date(firstBuyAt);
+        if (span >= 0) { dur = this.durationMs(span); days = dur.d; }
       }
+      // how long each matched unit was really held — the honest number once a position
+      // has more than one buy or more than one sell
+      const avgHeldMs = heldUnits > EPS ? heldWeighted / heldUnits : null;
+      const avgHeld = avgHeldMs === null ? null : this.durationMs(avgHeldMs);
 
       return { buyUnits, buyGross, buyFees, sellUnits, sellGross, sellFees,
-               avgCost, avgSell, totalBuyCost, totalSellCost, status, pl, realized,
+               avgCost, avgSell, totalBuyCost, totalSellCost, status, pl,
+               realized, realizedPct, realizedCost, realizedFees, matchedUnits, matches,
+               openUnits, openCost, openBuyFees, openAvgCost,
+               oversoldUnits, dayTradeUnits, avgHeld, avgHeldMs,
                firstBuyAt, lastSellAt, dur, days };
     },
 
@@ -622,6 +722,12 @@ createApp({
       const c = this.calc(p);
       if (c.status === "partial") return this.units(c.sellUnits) + " / " + this.units(c.buyUnits);
       return this.units(c.buyUnits || "");
+    },
+    // "3,000 sold · 2,000 held" — the whole story of a partly-closed position in one line
+    holdCell(p) {
+      const c = this.calc(p);
+      if (c.status !== "partial") return "";
+      return this.units(c.openUnits) + " still held @ " + this.priceN(c.openAvgCost);
     },
     plCell(p) {
       const c = this.calc(p);
@@ -637,20 +743,28 @@ createApp({
     },
     pctCell(p) {
       const c = this.calc(p);
-      if (c.status === "closed") return this.pctText(c.pl, c.totalBuyCost);
-      return "—";
+      // measured against the cost of the units actually sold, so a partial position
+      // shows a real return rather than a dash
+      if (c.realizedPct === null) return "—";
+      return c.realizedPct.toFixed(2) + "%";
     },
 
     // monthly subtotal (single currency — the group only holds the active tab's market)
     mSum(g) {
-      const s = { fees: 0, pl: 0, wins: 0, losses: 0 };
+      const s = { fees: 0, pl: 0, openPl: 0, total: 0, wins: 0, losses: 0 };
       g.items.forEach((p) => {
         const c = this.calc(p);
         s.fees += c.buyFees + c.sellFees;
-        if (c.status !== "closed") return;
-        s.pl += c.pl;
-        if (c.pl >= 0) s.wins++; else s.losses++;
+        if (c.status === "closed") {
+          s.pl += c.pl;
+          if (c.pl >= 0) s.wins++; else s.losses++;
+        } else if (c.status === "partial") {
+          // money already banked on a position that is still running — it counts
+          // towards the month, but it is not a finished trade so it stays out of W/L
+          s.openPl += c.realized;
+        }
       });
+      s.total = s.pl + s.openPl;
       const n = s.wins + s.losses;
       s.winRate = n ? Math.round((s.wins / n) * 100) : null;
       return s;
@@ -776,7 +890,7 @@ createApp({
     submitPosition() {
       const c = this.calc(this.form);
       if (!this.form.name.trim() || !c.buyUnits || !this.form.buys.some((f) => f.at)) return;
-      if (c.sellUnits > c.buyUnits) return; // oversold — the warning in the dialog explains
+      if (c.oversoldUnits > 0) return; // sold units that weren't on hand — the dialog explains
       const clean = JSON.parse(JSON.stringify(this.form));
       // drop completely empty fill rows
       clean.buys = clean.buys.filter((f) => this.num(f.units) > 0 || f.price !== "" || f.fee !== "" || f.at !== "");
@@ -838,10 +952,16 @@ createApp({
             "Avg cost": c.buyUnits ? c.avgCost : "", "Total buy cost": c.totalBuyCost,
             "Total sell cost": c.totalSellCost === null ? "" : c.totalSellCost,
             "P/L": c.status === "closed" ? c.pl : "", "P/L %": c.status === "closed" && c.totalBuyCost ? (c.pl / c.totalBuyCost * 100) : "",
+            "Realized P/L": c.matchedUnits > 0 ? c.realized : "",
+            "Realized %": c.realizedPct === null ? "" : c.realizedPct,
+            "Units sold": c.matchedUnits || "", "Units held": c.openUnits || "",
+            "Avg cost of held units": c.openUnits ? c.openAvgCost : "",
             "Status": c.status,
             "Cut loss price": p.stop !== "" && p.stop !== undefined ? this.num(p.stop) : "",
           } : { "Industry": "", "Signals": "", "Reason to buy": "", "Reason to sell": "", "Remarks": "",
-                "Avg cost": "", "Total buy cost": "", "Total sell cost": "", "P/L": "", "P/L %": "", "Status": "", "Cut loss price": "" };
+                "Avg cost": "", "Total buy cost": "", "Total sell cost": "", "P/L": "", "P/L %": "",
+                "Realized P/L": "", "Realized %": "", "Units sold": "", "Units held": "",
+                "Avg cost of held units": "", "Status": "", "Cut loss price": "" };
           let first = true;
           (p.buys || []).forEach((f) => {
             rows.push({ "Position ID": p.id, "Market": p.market, "Stock name": p.name, "Type": "BUY",
