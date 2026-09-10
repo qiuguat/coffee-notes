@@ -931,8 +931,16 @@ tbody tr {
     gap: 10px
 }
 
+.grid-3 {
+    grid-template-columns: 1fr 1fr 1fr
+}
+
 @media(max-width:560px) {
     .grid {
+        grid-template-columns: 1fr
+    }
+
+    .grid-3 {
         grid-template-columns: 1fr
     }
 }
