@@ -382,7 +382,7 @@
 
       <!-- position info + rules of buy in -->
       <div class="sect sect-info">
-        <div class="grid">
+        <div class="grid" :class="{ 'grid-3': form.market==='US' }">
           <label>Market
             <select v-model="form.market">
               <option value="MY">Malaysia (MYR)</option>
