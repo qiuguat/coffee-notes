@@ -389,6 +389,8 @@
               <option value="US">United States (USD)</option>
             </select>
           </label>
+          <label v-if="form.market==='US'" title="Only used to estimate the USD stamp duty Moomoo passes through from the Malaysian government on US-stock trades. Check today's rate and update this before pressing Est. — it drifts daily.">USD/MYR rate (for Est.)
+            <input type="number" step="0.0001" v-model="fxUsdMyr" placeholder="e.g. 4.07" /></label>
           <label>Stock name<input v-model="form.name" placeholder="e.g. CBHB" /></label>
           <label style="grid-column:1 / -1">Industry
             <div class="ind-row">
@@ -423,6 +425,7 @@
             <div class="dtwrap">
               <input type="number" step="0.01" v-model="f.fee" placeholder="Moomoo" />
               <button v-if="form.market==='MY'" type="button" class="nowbtn" title="Estimate commission + platform + clearing + stamp duty for this fill (MY only — check against Moomoo)" @click="f.fee = estimateFee(f.units, f.price)">Est.</button>
+              <button v-if="form.market==='US'" type="button" class="nowbtn" title="Estimate commission + platform + settlement + CAT + stamp duty for this buy fill (US market — check against Moomoo, especially on ADRs)" @click="f.fee = estimateFeeUS(f.units, f.price, false, form.industry)">Est.</button>
             </div>
           </label>
           <label>Buy datetime
@@ -477,6 +480,7 @@
             <div class="dtwrap">
               <input type="number" step="0.01" v-model="f.fee" placeholder="Moomoo" />
               <button v-if="form.market==='MY'" type="button" class="nowbtn" title="Estimate commission + platform + clearing + stamp duty for this fill (MY only — check against Moomoo)" @click="f.fee = estimateFee(f.units, f.price)">Est.</button>
+              <button v-if="form.market==='US'" type="button" class="nowbtn" title="Estimate commission + platform + settlement + SEC fee + TAF + CAT + stamp duty for this sell fill (US market — check against Moomoo, especially on ADRs)" @click="f.fee = estimateFeeUS(f.units, f.price, true, form.industry)">Est.</button>
             </div>
           </label>
           <label>Sell datetime
