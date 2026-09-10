@@ -441,6 +441,15 @@
           <div>Platform fees (buy)<b>{{ money(fc.buyFees, form.market) }}</b></div>
           <div>Total buy cost<b>{{ money(fc.totalBuyCost, form.market) }}</b></div>
         </div>
+        <div class="grid" style="margin-top:10px" v-if="fc.buyUnits">
+          <label title="Calculated using Moomoo's moving-average method: each buy re-averages against units still held, sells don't change it.">
+            <span class="lbl-row">Calculated avg cost</span>
+            <input type="text" :value="priceN(fc.movingAvgCost)" disabled /></label>
+          <label title="Optional — type Moomoo's exact figure here if it ever drifts a fraction from the calculated value. Clear this field to go back to using the calculated value.">
+            <span class="lbl-row">Override avg cost (optional)</span>
+            <input type="number" step="0.0001" v-model="form.avgCostManual" placeholder="e.g. 0.2181" /></label>
+        </div>
+        <p v-if="fc.hasOverride" class="hintline">Using your override ({{ priceN(fc.avgCost) }}) instead of the calculated {{ priceN(fc.movingAvgCost) }} — this feeds into the P/L and 1:2R plan below too.</p>
         <div class="grid" style="margin-top:10px">
           <label title="Auto-filled with your 2R target (Average cost + 2 × 1R) once cut loss price is set. Edit anytime to set your own target — once you type here it stays as you set it.">
             <span class="lbl-row">Target price</span>
